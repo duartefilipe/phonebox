@@ -3998,7 +3998,13 @@ async function load() {
 let hubInfo = { enabled: false, sources: [] };
 const hubOn = () => hubInfo.enabled && hubInfo.sources.length > 0;
 async function loadHub() {
-  try { hubInfo = await (await fetch('/api/hub')).json(); } catch (_) { hubInfo = { enabled: false, sources: [] }; }
+  // An agent without hub mode answers 404 with a body of its own, so the answer is only used once it has the
+  // shape this page draws; anything else leaves the card hidden instead of throwing while it renders.
+  hubInfo = { enabled: false, sources: [] };
+  try {
+    const answer = await (await fetch('/api/hub')).json();
+    if (answer && Array.isArray(answer.sources)) hubInfo = answer;
+  } catch (_) { /* no agent, or an answer that is not JSON */ }
   $('hubCard').hidden = !hubInfo.enabled;
   $('hubList').replaceChildren(...(hubInfo.sources.length ? hubInfo.sources.map((s) => h('div', { class: 'row', style: { gap: '8px', margin: '4px 0' } },
     h('span', { style: { width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: s.online ? '#22c55e' : '#64748b' } }),

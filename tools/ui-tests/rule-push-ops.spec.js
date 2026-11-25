@@ -34,9 +34,9 @@ test('switching a push rule to "has no update for" and back keeps the comparison
   await expect(card.locator('input[placeholder="value"]')).toHaveValue('offline');
 });
 
-test('the new push rule labels are translated in Vietnamese', async ({ page }) => {
-  const card = await openRules(page, 'vi', { id: 'quiet', name: 'Quiet', when: 'push', match: 'temp', op: 'stale', arg: '60', then: 'notify', text: '{detail}' });
+test('the new push rule labels are translated', async ({ page }) => {
+  const card = await openRules(page, 'es', { id: 'quiet', name: 'Quiet', when: 'push', match: 'temp', op: 'stale', arg: '60', then: 'notify', text: '{detail}' });
   const labels = await card.locator('select:has(option[value="stale"]) option').allTextContents();
-  expect(labels).toEqual(expect.arrayContaining(['lớn hơn hoặc bằng', 'nhỏ hơn hoặc bằng', 'không có cập nhật trong']));
-  await expect(card.getByText('giây', { exact: true })).toBeVisible();
+  expect(labels).toEqual(expect.arrayContaining(['es al menos', 'es como mucho', 'No hay ninguna actualización para']));
+  await expect(card.getByText('segundos', { exact: true })).toBeVisible();
 });

@@ -91,7 +91,7 @@ test('a partial settings load and repeated Revert leave the form clean', async (
   expect({ initialClean, revertedClean },
     `CONTROL: theme changed and reverted. EXPECTED: clean on load and revert | ACTUAL: load=${initialClean}, revert=${revertedClean}`)
     .toEqual({ initialClean: true, revertedClean: true });
-  await page.locator('#displayLangSel').selectOption('tr');
+  await page.locator('#displayLangSel').selectOption('es');
   await expect(save).toBeEnabled();
   await page.locator('#revert').click();
   await expect(page.locator('#displayLangSel')).toHaveValue('en');

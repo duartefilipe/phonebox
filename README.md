@@ -19,7 +19,7 @@ Windows, Linux e macOS. Sem root, sem conta ou serviço em nuvem.</p>
 
 <p align="center"><img src="docs/hero-0.6.png" width="900" alt="PhoneBox em três celulares mostrando automação, página inicial e planejador"></p>
 
-Monte seu painel no editor visual pelo navegador: **133 widgets**, **30 templates**, várias páginas e prévia ao vivo.
+Monte seu painel no editor visual pelo navegador: **134 widgets**, **30 templates**, várias páginas e prévia ao vivo.
 
 ## O que você pode fazer
 
