@@ -26,6 +26,8 @@ iniciado pela pasta Inicializar do Windows.
 | **Modo hub** (agente num servidor, Docker/Portainer, vários PCs e celulares; configurações com senha na porta 8767). | `agent/PhoneBox.Agent/Hub.cs`, `docker/`, `Dockerfile` |
 | **Imagem do hub construída só no servidor**: sem workflow de publicação no GitHub; o compose constrói `phonebox-hub:local` do repositório. | `docker/docker-compose.yml`, `docker/README.md` |
 | **Sincronização com o upstream** até `321c603` (tablet com mais linhas, Grok, contas extras do Claude Code, barra do Discord, tamanho de ícone por atalho, etc.). | commit `5b71c2a` |
+| **Tela "PC desligado" sempre ligada e com brilho próprio**: a página fica visível também na janela noturna, no lugar do relógio noturno (Geral › Tela, `display.awayAtNight`, ligado por padrão), e tem brilho próprio (`display.awayBrightness`, 0.01–1; 0 = como antes, o brilho da tela noturna). | `main.js` (`reconcileUnreachableNight`, `applyBrightness`, `awayBrightness`, `setAway`), `Config.cs` (`DisplayConfig.AwayAtNight`, `AwayBrightness`), `settings.html` (Geral › Tela), `config.default*.json`, testes em `tools/ui-tests/pc-off-brightness.spec.js` e `ConfigTests.cs` |
+| **Só três idiomas** (inglês, espanhol e português do Brasil): os outros 20 saíram do painel, das configurações, dos recursos do Android e do ícone da bandeja, junto com o suporte a escrita da direita para a esquerda (só o árabe o usava). `i18n.js` caiu de ~1 MB para ~270 kB e o pacote de traduções de ~1,1 MB para ~130 kB. | `android/.../www/i18n.js`, `locale-existing.js` (único pacote restante), `index.html` e `settings.html` (uma tag `<script>` de idioma), `res/values-*`, `res/xml/locales_config.xml`, `TrayStrings.*.resx`, `Config.cs` (`DisplayConfig.Languages`), `PhoneBox.Agent.csproj`, `style.css` e `settings.html` (regras `[dir="rtl"]` removidas) |
 
 ## Pendente
 
@@ -35,13 +37,25 @@ Decisão: trocar a "ponte da agenda" (ver abaixo) pelo **endereço secreto no fo
 cadastrado direto no PhoneBox. O agente busca o link a cada 10 minutos (`CalendarMonitor.cs`), sem login e sem
 vencimento.
 
-- [ ] O usuário copia, no Google Agenda (Configurações › a agenda › Integrar agenda), o **Endereço secreto no formato
-      iCal** de cada agenda e cola em **Geral › Agendas** do PhoneBox (no hub, ou no agente do Windows enquanto o hub não
-      sobe). **Não** pedir nem registrar os links no chat ou em arquivos do repositório.
+Estado em 25/11/2026: a troca **ainda não foi feita**. A ponte Python continua rodando (`pythonw agenda_ics.py`) e as
+três agendas cadastradas no agente do Windows ainda apontam para `http://127.0.0.1:8770/cal/N.ics`. Só o dono das
+agendas consegue copiar os endereços secretos, por isso os passos abaixo são manuais.
+
+O passo a passo também está **dentro do painel**, em **Geral › Agendas › "Passo a passo: uma agenda do Google"**
+(recolhível), para não precisar abrir este arquivo: chaves `s.cal.googleSteps` e `s.cal.googleStep1`…`5` mais
+`s.cal.googleNotes`, nos três idiomas.
+
+- [ ] Para **cada** agenda: abrir `calendar.google.com`, passar o mouse na agenda em **Minhas agendas**, clicar nos
+      **⋮** › **Configurações e compartilhamento**, descer até **Integrar agenda** e copiar o **Endereço secreto no
+      formato iCal** (o que termina em `/basic.ics`, não o endereço público). Colar em **Geral › Agendas** do PhoneBox
+      (no hub, ou no agente do Windows enquanto o hub não sobe) e salvar. **Não** pedir nem registrar os links no chat
+      ou em arquivos do repositório — eles valem como senha daquela agenda.
+- [ ] Se um endereço vazar: **Redefinir URLs particulares**, na mesma página do Google, invalida o antigo (e exige
+      colar o novo no PhoneBox).
 - [ ] Agenda compartilhada: o endereço secreto só aparece com permissão de "fazer alterações e gerenciar
       compartilhamento"; sem ela, quem é dono da agenda precisa passar o link.
-- [ ] Agenda assinada de fonte externa (`…@import.calendar.google.com`): o Google não mostra endereço secreto; usar o
-      link ICS original da fonte.
+- [ ] Agenda assinada de fonte externa (`…@import.calendar.google.com`, o caso da agenda "Calendário" aqui): o Google
+      não mostra endereço secreto; usar o link ICS original da fonte.
 - [ ] Depois de conferir que os eventos aparecem: remover do PhoneBox as agendas antigas que apontam para
       `http://127.0.0.1:8770/cal/N.ics`, apagar o atalho **"PhoneBox Agenda"** da pasta Inicializar do Windows e encerrar
       o processo `pythonw` da ponte. Sugerir ao usuário revogar o acesso do app em myaccount.google.com/permissions.
@@ -65,9 +79,7 @@ console de apps e iniciar jogos da Steam.
 
 ### 3. Outras ideias levantadas
 
-- [ ] **Alexa**: sem integração. Caminho sugerido: Home Assistant (integração Alexa) + widget de Home Assistant do
-      PhoneBox, e rotinas da Alexa chamando os webhooks do PhoneBox via um intermediário. Adiado pelo usuário.
-- [ ] Tela "PC desligado" mais clara: hoje o brilho segue o da tela noturna (`night.brightness`).
+Nada pendente aqui no momento.
 
 ## A "ponte da agenda" (a ser aposentada)
 

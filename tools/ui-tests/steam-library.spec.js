@@ -159,8 +159,8 @@ test('the library speaks the panel language', async ({ page }) => {
   await tiles.nth(1).click();
   await expect(tiles.nth(1).locator('.sl-status')).toHaveText('Toque de novo para jogar');
 
-  await open(page, '/panel/', {}, { display: { language: 'vi' } });
-  await expect(tiles.nth(0).locator('.sl-status')).toHaveText('Đang chơi');
+  await open(page, '/panel/', {}, { display: { language: 'es' } });
+  await expect(tiles.nth(0).locator('.sl-status')).toHaveText('Jugando ahora');
 });
 
 test('pickGames keeps the favorites order, skips missing ones and applies the limit', async ({ page }) => {

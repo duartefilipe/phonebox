@@ -64,11 +64,11 @@ test('tp() translates panel labels and preserves unknown text', async ({ page })
   const out = await page.evaluate(async () => {
     const I = window.PhoneBoxI18n;
     const main = await import('/panel/main.js');
-    I.setLang('de');
-    const de = I.tp('Waiting for GitHub data…');
+    I.setLang('es');
+    const es = I.tp('Waiting for GitHub data…');
     I.setLang('pt-BR');
     return {
-      de,
+      es,
       pt: I.tp('No detection'),
       repeat: I.tp('Track'),
       power: main.tpv('{n}% power', { n: 40 }),
@@ -79,8 +79,8 @@ test('tp() translates panel labels and preserves unknown text', async ({ page })
     };
   });
   expect(out.inherited).toEqual(['constructor', 'toString', 'constructor']);
-  expect(out.de).toMatch(/GitHub/);
-  expect(out.de).not.toBe('Waiting for GitHub data…');
+  expect(out.es).toMatch(/GitHub/);
+  expect(out.es).not.toBe('Waiting for GitHub data…');
   expect(out.unknown).toBe('A label entered by the user');
   expect(out.pt).toBe('Sem detecção');
   expect(out.repeat).toBe('Faixa');

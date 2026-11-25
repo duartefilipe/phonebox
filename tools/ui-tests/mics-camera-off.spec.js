@@ -52,9 +52,9 @@ test('mics off, camera off says plainly that the camera was not turned off when 
 });
 
 test('mics off, camera off reports in the panel language', async ({ page }) => {
-  await show(page, { obs: { enabled: false }, display: { language: 'de' } });
-  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
-  await expect(page.locator('.control-deck .w-title').first()).toHaveText('Mikros aus, Kamera aus');
-  await page.getByRole('button', { name: 'Mikrofone stummschalten + OBS-Kamera stoppen' }).click();
-  await expect(page.locator('#toast')).toHaveText('Mikrofone stummgeschaltet · Kamera nicht ausgeschaltet: OBS ist nicht verbunden');
+  await show(page, { obs: { enabled: false }, display: { language: 'es' } });
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es');
+  await expect(page.locator('.control-deck .w-title').first()).toHaveText('Micros apagados, cámara apagada');
+  await page.getByRole('button', { name: 'Silenciar micrófonos + detener cámara de OBS' }).click();
+  await expect(page.locator('#toast')).toHaveText('Micrófonos silenciados · Cámara no apagada: OBS no está conectado');
 });

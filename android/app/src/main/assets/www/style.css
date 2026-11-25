@@ -101,15 +101,6 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   grid-template-rows: repeat(var(--pb-rows, 6), minmax(0, 1fr));
   gap: 8px;
 }
-/* Widget coordinates are saved from the left edge in both the panel and the editor. */
-/* The pager scrolls by positive offsets (page i at i × width), so it stays left to right as well. */
-[dir="rtl"] #pager { direction: ltr; }
-[dir="rtl"] #pager > .page { direction: rtl; }
-[dir="rtl"] .grid, [dir="rtl"] .ov-map { direction: ltr; }
-[dir="rtl"] .grid > .w { direction: rtl; }
-[dir="rtl"] input[type="range"] { direction: ltr; }
-/* Charts and playback controls use physical x coordinates; command output keeps its terminal order. */
-[dir="rtl"] :where(canvas, .bar, .times, .track, .deck-meter, .cmd-o) { direction: ltr; unicode-bidi: isolate; }
 .w { position: relative; min-width: 0; min-height: 0; overflow: hidden; container-type: size; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: clamp(10px, 7cqmin, 20px); }
 
@@ -361,13 +352,9 @@ body.night #navCard, body.night #navChip { display: none; }
   line-height: .95; letter-spacing: -0.04em; margin-inline-start: -.03em;
   display: flex; align-items: flex-start;
 }
-[dir="rtl"] .w-clock > .clock { justify-content: flex-end; margin-inline-start: 0; }
 .w-clock.clock-centered > .clock { justify-content: center; margin-inline-start: 0; }
-/* Keep the time in reading order while the date and labels inherit the interface direction. */
-[dir="rtl"] .clock, [dir="rtl"] #nClock { direction: ltr; unicode-bidi: isolate; }
 @supports (font-size: 1cqh) {
   .clock { font-size: min(calc(var(--tf, .6) * 100cqh), 30cqw); }
-  [dir="rtl"] .clock { font-size: min(calc(var(--tf, .6) * 100cqh), 25cqw); }
 }
 .clock .colon { opacity: .55; margin: 0 .01em; }
 .clock .colon.dim { opacity: .2; }
@@ -467,14 +454,6 @@ body.offline .offline-msg { display: flex; }
 @container (max-height: 110px) { .w-media .m-top { display: none; } .w-media { justify-content: center; } }
 @container (max-width: 250px) { .w-media .vol { display: none; } }
 @container (min-height: 230px) and (min-width: 420px) { .w-media .ic.play { width: 62px; height: 62px; } .w-media .ic { width: 52px; height: 52px; } }
-
-/* Preserve physical transport order and isolate measurements from surrounding RTL labels. */
-[dir="rtl"] :where(.m-controls, .t-val, .g-val, .s-main, .s-main .multi b, .gd-big, .m-row > span:last-child, .wx-temp, .fc-v, .wc-t) {
-  direction: ltr;
-  unicode-bidi: isolate;
-}
-[dir="rtl"] :is(.t-val, .gd-temp) { text-align: right; }
-[dir="rtl"] .s-main { justify-content: flex-end; }
 
 /* ---------- metric tile ---------- */
 .w-stat { padding: clamp(5px, 9cqh, 10px) clamp(8px, 6cqw, 12px); }

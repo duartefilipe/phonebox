@@ -44,13 +44,13 @@ async function layout(page, options, { app = true } = {}) {
 
 test('dictation sends what the phone heard for its own widget', async ({ page }) => {
   const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
-  await layout(page, { control: true, language: 'tr-TR' });
+  await layout(page, { control: true, language: 'es-ES' });
   await page.locator('.dc-mic').click();
   await expect(page.locator('.dc-text')).toHaveText('hello world');
   // in the query, no body: the app's transport doesn't carry request bodies
   await expect.poll(() => page.evaluate(() => window.__posts)).toEqual([['/dictate?widget=test%2Fdc&text=hello%20world', null]]);
   await expect(page.locator('.dc-note')).toHaveText('Typed on the computer');
-  expect(await page.evaluate(() => window.__listen)).toEqual([{ lang: 'tr-TR', offline: false }]);
+  expect(await page.evaluate(() => window.__listen)).toEqual([{ lang: 'es-ES', offline: false }]);
   expect(errors).toEqual([]);
 });
 

@@ -153,6 +153,21 @@ public class ConfigTests
         Assert.True(Load("""{ "display": { "nightWhenUnreachable": true } }""").Display.NightWhenUnreachable);
     }
 
+    // The PC-off page stays on at night unless that is turned off, and 0 brightness keeps the old behaviour (the
+    // night screen's level), so an existing settings file is unchanged until the slider is moved.
+    [Fact]
+    public void TheAwayPageStaysOnAtNightAndItsBrightnessIsClamped()
+    {
+        var defaults = Load("{}").Display;
+        Assert.True(defaults.AwayAtNight);
+        Assert.Equal(0, defaults.AwayBrightness);
+        Assert.False(Load("""{ "display": { "awayAtNight": false } }""").Display.AwayAtNight);
+        Assert.Equal(0.5, Load("""{ "display": { "awayBrightness": 0.5 } }""").Display.AwayBrightness);
+        Assert.Equal(1, Load("""{ "display": { "awayBrightness": 9 } }""").Display.AwayBrightness);
+        Assert.Equal(0, Load("""{ "display": { "awayBrightness": -1 } }""").Display.AwayBrightness);
+        Assert.Equal(0.01, Load("""{ "display": { "awayBrightness": 0.001 } }""").Display.AwayBrightness);
+    }
+
     [Fact]
     public void DisplayFinishSoundVolumeDefaultsAndRange()
     {
@@ -662,23 +677,22 @@ public class ConfigConcurrencyTests
         {
             Assert.Equal("auto", s.Get().Display.Language);
 
-            Assert.Null(s.Save("""{"display":{"language":"tr"}}"""));
-            Assert.Equal("tr", s.Get().Display.Language);
+            Assert.Null(s.Save("""{"display":{"language":"es"}}"""));
+            Assert.Equal("es", s.Get().Display.Language);
             var pub = JsonSerializer.Serialize(s.Get().ToPublic(), ConfigStore.WriteOpts);
             using var doc = JsonDocument.Parse(pub);
-            Assert.Equal("tr", doc.RootElement.GetProperty("display").GetProperty("language").GetString());
+            Assert.Equal("es", doc.RootElement.GetProperty("display").GetProperty("language").GetString());
         }
         finally { File.Delete(path); File.Delete(path + ".bak"); }
     }
 
     [Theory]
-    [InlineData("\"TR\"", "tr")]       // any case
-    [InlineData("\" de \"", "de")]     // stray spaces
-    [InlineData("\"vi\"", "vi")]       // added after the list was first written (#177)
-    [InlineData("\"pt-BR\"", "pt-BR")] // distinct from pt; casing must survive the round trip, i18n.js looks it up by exact code
+    [InlineData("\"ES\"", "es")]       // any case
+    [InlineData("\" es \"", "es")]     // stray spaces
+    [InlineData("\"pt-BR\"", "pt-BR")] // casing must survive the round trip, i18n.js looks it up by exact code
     [InlineData("\"pt-br\"", "pt-BR")] // any case still normalizes to the canonical pt-BR, not a lowercase copy
-    [InlineData("\"zh-hant\"", "zh-Hant")]
-    [InlineData("\"AR\"", "ar")]
+    [InlineData("\"tr\"", "auto")]     // a language that was dropped is treated like one PhoneBox never had
+    [InlineData("\"pt\"", "auto")]     // European Portuguese is gone: only the Brazilian dictionary is left
     [InlineData("\"xx\"", "auto")]     // a language PhoneBox does not have
     [InlineData("null", "auto")]
     [InlineData("\"\"", "auto")]

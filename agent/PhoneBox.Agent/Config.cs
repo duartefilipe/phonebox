@@ -209,7 +209,7 @@ public sealed class DisplayConfig
     public string Language { get; set; } = "auto";
     /// <summary>The codes the panel and the settings page are translated into (i18n.js). Casing matters for pt-BR:
     /// it is a distinct entry from pt, not a variant of it, so it must survive a save in this exact form.</summary>
-    internal static readonly string[] Languages = ["auto", "en", "tr", "de", "fr", "es", "it", "pt", "pt-BR", "nl", "pl", "ru", "el", "vi", "zh", "ja", "ko", "id", "th", "uk", "hi", "cs", "ar", "zh-Hant"];
+    internal static readonly string[] Languages = ["auto", "en", "es", "pt-BR"];
     public bool ShowSeconds { get; set; } = true;
     /// <summary>false ("14:05", default), true ("2:05 PM") or "auto" (follow the phone).</summary>
     [JsonConverter(typeof(Hour12JsonConverter))]
@@ -247,6 +247,17 @@ public sealed class DisplayConfig
     public bool NightWhenUnreachable { get; set; }
     /// <summary>Minutes to wait after the agent becomes unreachable before showing the night screen.</summary>
     public int UnreachableNightDelayMin { get; set; } = 5;
+    /// <summary>
+    /// Keep the page marked "show while the PC is off" on through the night hours, instead of letting the night clock
+    /// cover it. Only that page is affected: without one the night screen comes on as before.
+    /// </summary>
+    public bool AwayAtNight { get; set; } = true;
+    /// <summary>
+    /// Screen brightness for the PC-off page, 0.01–1; 0 = leave it to the night screen or the phone's own setting, as
+    /// before. Without it the page is drawn at the night screen's brightness (<see cref="NightConfig.Brightness"/>),
+    /// which is too dark to read across a desk.
+    /// </summary>
+    public double AwayBrightness { get; set; }
     /// <summary>A hand near the phone (proximity sensor) wakes the night screen.</summary>
     public bool ProximityWake { get; set; } = true;
     /// <summary>OLED burn-in protection: every 2 minutes the panel moves by a few pixels and the night clock drifts.</summary>
@@ -820,6 +831,9 @@ public sealed partial class ConfigStore(string path)
         c.Display.Wallpaper.Dim = Math.Clamp(c.Display.Wallpaper.Dim, 0, 90);
         c.Display.Wallpaper.Blur = Math.Clamp(c.Display.Wallpaper.Blur, 0, 20);
         c.Display.UnreachableNightDelayMin = Math.Clamp(c.Display.UnreachableNightDelayMin, 1, 30);
+        // 0 keeps the old behaviour (the night screen's brightness, or the phone's own); anything else is a real level
+        c.Display.AwayBrightness = c.Display.AwayBrightness <= 0 || double.IsNaN(c.Display.AwayBrightness)
+            ? 0 : Math.Clamp(c.Display.AwayBrightness, 0.01, 1);
         // a language the panel does not have falls back to following the phone / browser. Matched case-insensitively
         // so "PT-br" still resolves, but stored in its canonical casing: i18n.js looks pt-BR up by exact code.
         var lang = (c.Display.Language ?? "").Trim();

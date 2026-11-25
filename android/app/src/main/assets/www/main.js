@@ -1664,6 +1664,7 @@ export function setAway(on) {
   awayOn = on;
   document.body.classList.toggle('away', on);
   if (on) { closeSheet(); closeOverview(); }
+  applyBrightness(true); // the page can have its own brightness, so coming and going changes the screen
   setActive(true);
 }
 
@@ -2515,9 +2516,13 @@ function reconcileUnreachableNight(now = new Date()) {
   // hub mode: the hub answers, but none of its computers does
   const allOff = !PREVIEW && !!awayPage && online !== false && Array.isArray(D.state?.sources)
     && D.state.sources.length > 0 && D.state.sources.every((s) => !s.online);
-  setAway((unreachable || allOff) && !!awayPage);
+  const away = (unreachable || allOff) && !!awayPage;
+  setAway(away);
   const dark = darkRoom && cfg.display?.nightWhenDark === true;
-  setNight((isNight(now) || dark || (unreachable && !awayPage)) && Date.now() > wakeUntil);
+  // The PC-off page stays on through the night hours unless that is turned off (Display › "Keep it on at night"):
+  // on a desk panel the point of the page is to be readable while the computer sleeps.
+  const awayKeepsNightOff = away && cfg.display?.awayAtNight !== false;
+  setNight((isNight(now) || dark || (unreachable && !awayPage)) && !awayKeepsNightOff && Date.now() > wakeUntil);
 }
 /**
  * Before widgets are built: a timer that ran out while the panel was closed rings during the build, so the night
@@ -2537,10 +2542,18 @@ export let lastBrightness = null;
 /** 1 lux → 5 %, 10 → 37 %, 100 → 68 %, 1000+ lux → 100 % (perceived brightness is roughly logarithmic). */
 export const luxToBrightness = (l) => Math.max(0.05, Math.min(1, 0.05 + (0.95 * Math.log10(l + 1)) / 3));
 
+/** The PC-off page's own brightness (Display › Brightness while the PC is off), or null to leave it as before. */
+export function awayBrightness() {
+  const v = +cfg.display?.awayBrightness;
+  return Number.isFinite(v) && v > 0 ? Math.min(1, Math.max(0.01, v)) : null;
+}
+
 export function applyBrightness(force = false) {
   if (!bridge) return;
   let v = -1; // the phone's own setting
-  if (nightOn) v = cfg.night?.brightness ?? 0.02;
+  // the PC-off page before the night screen: with both on, the page is what you see, so its level is the one that counts
+  if (awayOn && awayBrightness() != null) v = awayBrightness();
+  else if (nightOn) v = cfg.night?.brightness ?? 0.02;
   else if (cfg.display?.autoBrightness && lux != null) v = luxToBrightness(lux);
   if (!force && lastBrightness != null && v >= 0 && lastBrightness >= 0 && Math.abs(v - lastBrightness) < 0.04) return;
   lastBrightness = v;

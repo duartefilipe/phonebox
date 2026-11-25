@@ -33,50 +33,42 @@ const DEMO_NAMES = [
   'C:\\Users\\you\\Pictures\\Frame', 'C:\\ffmpeg\\bin\\ffmpeg.exe',
 ];
 
-// Any run of two English words with no Vietnamese diacritics. Ids, codes, units, urls and single words (product names
-// like "Control Deck", "Spotify", "Claude") are allowed to stay English.
-function englishLeftovers(texts, allowed) {
+// Text that reads as a phrase rather than an id, a code, a number with a unit or a single product name. Those forms
+// are allowed to be identical in every language, so they can never say anything about a missing translation.
+function phrases(texts, allowed) {
   const allow = new Set(allowed);
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
-  const isEnglish = (t) => {
+  const isPhrase = (t) => {
     if (!t || t.length < 5) return false;
     if (allow.has(t)) return false;
     // a list bullet prefixes data the machine reported (adapter and device names), not interface text
     if (allow.has(t.replace(/^[·•]\s*/, ''))) return false;
-    if (/[\u00c0-\u1ef9]/i.test(t)) return false;               // Vietnamese diacritics
     if (!/[A-Za-z]{3,}/.test(t)) return false;
     // Exempt only real identifier, code and numeric/unit forms. The earlier pattern allowed letters and spaces, so an
     // ordinary label like "Save all settings" counted as an identifier and slipped through.
     if (/^(?:[\w.\-+#/%:]+|[-\d.,\s]+(?:%|GB|MB|KB|ms|s|°C|W|V|Hz|%\/s)?|[\w.\-]+\/(?:s|min|h))$/.test(t)) return false;
     return /[A-Za-z]{2,}[^A-Za-z]{1,3}[A-Za-z]{2,}/.test(t);     // at least two words
   };
-  return [...new Set(texts.map(norm))].filter(isEnglish);
+  return [...new Set(texts.map(norm))].filter(isPhrase);
 }
 
-// isEnglish below flags a run of two words with no diacritic anywhere in the string. Vietnamese marks tone on
-// nearly every syllable, so that is a reliable signal there; Portuguese is not (plenty of whole phrases, like
-// "Nenhum telefone conectado", carry no accent at all), so this check stays Vietnamese-only. The language-agnostic
-// completeness checks for Portuguese (Brazil) and every other language live in tools/ui-tests/i18n.spec.js instead,
-// comparing each dictionary directly against the English one rather than guessing from the rendered text.
-test('the settings page shows no English left in Vietnamese, with every section open', async ({ page }) => {
+// Reads every text the settings page puts on screen, with every <details> open: that is how the Control Deck hints
+// and the audio profile labels escaped earlier sweeps.
+async function settingsTexts(page, language) {
   await page.goto('/settings/');
   // A page-level fetch mock would hide the real /api/settings answer, so switch the language through the UI contract:
   // the settings editor reads display.language from the file it loads, and the demo server serves a config we can set.
-  await page.evaluate(async () => {
+  await page.evaluate(async (language) => {
     const r = await fetch('/api/settings');
     const cfg = await r.json();
-    cfg.display = { ...(cfg.display || {}), language: 'vi' };
+    cfg.display = { ...(cfg.display || {}), language };
     await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
-  });
+  }, language);
   await page.goto('/settings/');
-  await expect(page.locator('#langSel')).toHaveValue('vi', { timeout: 15000 });
-
-  // <details> hides its contents from a text scan until it is open, which is how the Control Deck hints and the audio
-  // profile labels escaped earlier sweeps: open every one, then read the visible text of every leaf element.
+  await expect(page.locator('#langSel')).toHaveValue(language, { timeout: 15000 });
   await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; }));
   await page.waitForTimeout(800);
-
-  const { texts, names } = await page.evaluate(() => {
+  return page.evaluate(() => {
     // Input values are user data, not interface text; their placeholder and aria-label still are.
     const skip = new Set(['SCRIPT', 'STYLE', 'CODE', 'PRE', 'TEXTAREA']);
     const out = [];
@@ -101,10 +93,21 @@ test('the settings page shows no English left in Vietnamese, with every section 
     walk(document.body);
     return { texts: out, names: window.PhoneBoxI18n.LANGUAGES.map((lang) => lang.nativeName) };
   });
+}
+
+// A string that comes out word for word the same in English and in another language was never wrapped for
+// translation. This compares what reaches the screen, not what the dictionary holds: a literal that never went
+// through t() has no key at all, so a key-coverage check cannot see it. It needs no per-language spelling rules,
+// which is what the earlier Vietnamese-diacritics version depended on.
+test('the settings page leaves no untranslated phrase, with every section open', async ({ page }) => {
+  const english = await settingsTexts(page, 'en');
+  const { texts, names } = await settingsTexts(page, 'es');
+  const spanish = new Set(phrases(texts, []));
+  const shared = phrases(english.texts, []).filter((s) => spanish.has(s));
 
   // Product names and platform names that are not translated on purpose, and demo/sample data the config carries.
-  const leftoversKept = englishLeftovers(texts, [
-    'Control Deck', 'PhoneBox', 'Spotify', 'Claude', 'Codex', 'GitHub', 'OBS Studio', 'Home Assistant',
+  const leftoversKept = phrases(shared, [
+    'Control Deck', 'PhoneBox', 'Spotify', 'Claude', 'Claude Code', 'Codex', 'GitHub', 'OBS Studio', 'Home Assistant',
     'Discord', 'Antigravity', 'Tailscale', 'Windows', 'macOS', 'Linux', 'Android', 'WebView',
     'Windows Terminal', 'File Explorer (args: folder)', 'Task Manager', 'AppID', 'PowerShell',
     'JSON', 'HTTPS', 'USB', 'Wi-Fi', 'MIDI', 'OSC', 'SPA', 'CodexBar', 'radio-browser.info',

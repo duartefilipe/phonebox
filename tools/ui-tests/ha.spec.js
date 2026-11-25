@@ -139,13 +139,13 @@ test('a hand-edited numeric id does not break saving', async ({ page }) => {
 
 test('the editor and the empty panel are translated', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
-  await open(page, '/settings/#pages', { control: true, items: [{ id: 'light.desk' }] }, { display: { language: 'de' } });
+  await open(page, '/settings/#pages', { control: true, items: [{ id: 'light.desk' }] }, { display: { language: 'es' } });
   await page.locator('#canvas .wb').first().click();
-  await expect(page.getByRole('button', { name: 'Symbol wählen' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Entität hinzufügen/ })).toBeVisible();
-  await expect(page.locator('.ha-row').getByLabel('Namen anzeigen')).toBeChecked();
-  await open(page, '/panel/', { control: true, items: [] }, { display: { language: 'de' } });
-  await expect(page.locator('.empty')).toContainText('Entitäten in den Widget-Einstellungen hinzufügen');
+  await expect(page.getByRole('button', { name: 'Elegir icono' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Añadir entidad/ })).toBeVisible();
+  await expect(page.locator('.ha-row').getByLabel('Mostrar nombre')).toBeChecked();
+  await open(page, '/panel/', { control: true, items: [] }, { display: { language: 'es' } });
+  await expect(page.locator('.empty')).toContainText('Añade entidades en los ajustes del widget');
 });
 
 // Wraps window.fetch before the demo installs its own, so a test can see (or fail) the /api/ha/* calls the page makes.

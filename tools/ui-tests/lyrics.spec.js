@@ -120,9 +120,9 @@ test('the widget speaks the panel language', async ({ page }) => {
   await showPage(page, [{ id: 'l', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: { lookup: false } }], { language: 'pt-BR' });
   await expect(page.locator('.w-lyrics .w-title')).toHaveText('Letras sincronizadas');
   await expect(page.locator('.w-lyrics .ly-note')).toHaveText('Ligue “Buscar letras no LRCLIB” nas opções deste widget');
-  await showPage(page, [{ id: 'l', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: { lookup: false } }], { language: 'vi' });
-  await expect(page.locator('.w-lyrics .w-title')).toHaveText('Lời bài hát đồng bộ');
-  await expect(page.locator('.w-lyrics .ly-note')).toHaveText('Bật “Tra lời bài hát trên LRCLIB” trong tùy chọn của widget này');
+  await showPage(page, [{ id: 'l', type: 'lyrics', x: 0, y: 0, w: 12, h: 6, options: { lookup: false } }], { language: 'es' });
+  await expect(page.locator('.w-lyrics .w-title')).toHaveText('Letras sincronizadas');
+  await expect(page.locator('.w-lyrics .ly-note')).toHaveText('Activa «Buscar letras en LRCLIB» en las opciones de este widget');
 });
 
 test('an answer to an older request does not replace the newer one (A → B → A)', async ({ page }) => {

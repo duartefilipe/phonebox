@@ -64,6 +64,10 @@ npx playwright test
 
 On Linux CI, use `npx playwright install --with-deps chromium`. Playwright starts its own demo on port 8781.
 
+The browser tests take several minutes and hold a Chromium and a demo server while they run, so run them when you
+want them — before a release, or after changing the panel, the settings editor or the dictionaries — rather than on
+every edit. The agent tests above are the quick check. See [AGENTS.md](../AGENTS.md).
+
 ### Build and run
 
 On Windows, from the repository root:

@@ -1,8 +1,8 @@
 // Localisation gaps the first i18n pass left behind: literals the dictionary already translates, and one spot
-// that compared a localized label against the English word. Against the web demo, in German.
+// that compared a localized label against the English word. Against the web demo, in Spanish.
 const { test, expect } = require('@playwright/test');
 
-async function show(page, widgets, display = { language: 'de' }) {
+async function show(page, widgets, display = { language: 'es' }) {
   await page.goto('/panel/');
   await page.evaluate(({ widgets, display }) => {
     localStorage.clear();
@@ -51,13 +51,13 @@ test('a small agenda shows relative times in the panel language', async ({ page 
   await show(page, [{ id: 'ag', type: 'agenda', x: 0, y: 0, w: 12, h: 1, options: {} }]);
   await page.evaluate(() => window.PhoneBoxDemo.emit('refresh'));
   const sub = page.locator('.ag-big-s').first();
-  await expect(sub).toHaveText(/^in \d+ Min/); // German "in 35 Min · 12:35", not "Heute · 12:35"
-  await expect(sub).not.toHaveText(/Heute/);
+  await expect(sub).toHaveText(/^en \d+ min/); // Spanish "en 35 min · 12:35", not "Hoy · 12:35"
+  await expect(sub).not.toHaveText(/Hoy/);
 });
 
 test('the breathe widget greets in the panel language before the first tap', async ({ page }) => {
   await show(page, [{ id: 'br', type: 'breathe', x: 0, y: 0, w: 4, h: 2, options: {} }]);
-  await expect(page.locator('.br-w')).toHaveText('Tippen zum Starten');
+  await expect(page.locator('.br-w')).toHaveText('Toca para iniciar');
 });
 
 // A copied English label can pass a key-coverage check, so check the translations and their placeholders too.
@@ -72,7 +72,7 @@ test('every translated key is really translated, and the rest fall back to Engli
         .filter((k) => typeof S[lang]?.[k] !== 'string' || !S[lang][k].trim())
         .map((k) => `${lang}:${k}`));
     // a key whose text is identical to English is either a name that is not translated (Wi-Fi, USB, Client secret) or
-    // padding; the Vietnamese dictionary is complete, so check it exactly, and spot-check the rest for copied sentences.
+    // padding, so a sentence copied over from English is a real gap in any of the dictionaries.
     const SAME_IS_FINE = new Set(['s.discord.clientSecret', 'status.wiFi', 'status.usb', 's.cd.clientId']);
     const copied = Object.keys(S).filter((lang) => lang !== 'en').flatMap((lang) =>
       Object.keys(S[lang])
@@ -83,11 +83,11 @@ test('every translated key is really translated, and the rest fall back to Engli
       Object.keys(en).filter((k) => typeof S[lang][k] === 'string' &&
         placeholders(S[lang][k]) !== placeholders(en[k])).map((k) => `${lang}:${k}`));
     // An English key can ship before its translation.
-    I18n.setLang('de');
+    I18n.setLang('es');
     S.en['test.englishFallback'] = 'English fallback';
     const fallback = I18n.t('test.englishFallback');
     delete S.en['test.englishFallback'];
-    I18n.setLang('vi');
+    I18n.setLang('pt-BR');
     const translated = I18n.t('s.js.addWidget');
     return { gaps, copied, changedPlaceholders, fallback, translated };
   });
@@ -95,11 +95,11 @@ test('every translated key is really translated, and the rest fall back to Engli
   expect(result.copied).toEqual([]);
   expect(result.changedPlaceholders).toEqual([]);
   expect(result.fallback).toBe('English fallback');
-  expect(result.translated).toBe('Thêm widget');
+  expect(result.translated).toBe('Adicionar um widget');
 });
 
-// Keep dedicated checks for the two established full dictionaries.
-for (const lang of ['vi', 'pt-BR']) {
+// Both remaining dictionaries are complete, so check each one exactly.
+for (const lang of ['es', 'pt-BR']) {
 test(`the ${lang} dictionary is complete`, async ({ page }) => {
   await page.goto('/panel/');
   const gaps = await page.evaluate((lang) => {
@@ -110,33 +110,11 @@ test(`the ${lang} dictionary is complete`, async ({ page }) => {
 });
 }
 
-test('the Greek dictionary and widget catalog are complete', async ({ page }) => {
-  await page.goto('/panel/');
-  const out = await page.evaluate(async () => {
-    const I18n = window.PhoneBoxI18n;
-    const S = I18n.STRINGS;
-    const missing = Object.keys(S.en).filter((k) => !(k in S.el));
-    I18n.setLang('el');
-    return {
-      missing,
-      locale: I18n.getLocale(),
-      add: I18n.t('s.js.addWidget'),
-      name: I18n.tc('Clock'),
-      category: I18n.tc('Weather & sky'),
-    };
-  });
-  expect(out.missing).toEqual([]);
-  expect(out.locale).toBe('el-GR');
-  expect(out.add).not.toBe('Add a widget');
-  expect(out.name).toMatch(/[\u0370-\u03ff]/);
-  expect(out.category).toMatch(/[\u0370-\u03ff]/);
-});
-
 test('the widget catalog translates by its English text', async ({ page }) => {
   await page.goto('/panel/');
   const out = await page.evaluate(() => {
     const I18n = window.PhoneBoxI18n;
-    I18n.setLang('vi');
+    I18n.setLang('es');
     return {
       name: I18n.tc('Clock'),
       desc: I18n.tc('Clock, weather, now playing and PC tiles.'),
@@ -146,9 +124,9 @@ test('the widget catalog translates by its English text', async ({ page }) => {
       other: (I18n.setLang('en'), I18n.tc('Clock')),
     };
   });
-  expect(out.name).toBe('Đồng hồ');
-  expect(out.desc).toContain('Đồng hồ');
-  expect(out.category).toBe('Thời tiết & bầu trời');
+  expect(out.name).toBe('Reloj');
+  expect(out.desc).toContain('Reloj');
+  expect(out.category).toBe('Tiempo & cielo');
   expect(out.untouched).toBe('not in the catalog');
   expect(out.other).toBe('Clock');
 });
@@ -180,7 +158,7 @@ test('i18n.js defines every key once per language', () => {
   // EXTRA is merged into STRINGS with Object.assign, so the two share one key space per language; CATALOG is its own.
   const TABLE = /^ {2}const ([A-Z_]+) = \{\s*$/;
   // A property name as source text: 'single', "double" or bare. name() turns it into the name JavaScript uses, so
-  // Time, 'Time' and "Time" (or vi and 'vi') count as the same key.
+  // Time, 'Time' and "Time" (or es and 'es') count as the same key.
   const NAME = String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*`;
   const BLOCK = new RegExp(String.raw`^ {4}(${NAME}):\s*\{\s*$`);
   const KEY = new RegExp(String.raw`^ {6}(${NAME}):`);
@@ -200,7 +178,7 @@ test('i18n.js defines every key once per language', () => {
     if (seen.has(key)) dupes.push(`${block} ${k[1]} (lines ${seen.get(key)} and ${i + 1})`);
     else seen.set(key, i + 1);
   });
-  expect(spaces.size).toBeGreaterThanOrEqual(14); // the parser still finds the language blocks (13 languages + catalog)
+  expect(spaces.size).toBeGreaterThanOrEqual(8); // the parser still finds the language blocks of every table
   expect(dupes).toEqual([]);
 });
 
@@ -227,8 +205,8 @@ test('both settings language selectors stay in sync and Revert restores the save
   });
   await page.goto('/settings/#general');
   await expect(page.locator('#langSel')).toHaveValue('en');
-  await page.locator('#displayLangSel').selectOption('tr');
-  await expect(page.locator('#langSel')).toHaveValue('tr');
+  await page.locator('#displayLangSel').selectOption('es');
+  await expect(page.locator('#langSel')).toHaveValue('es');
   await expect(page.locator('#save')).toBeEnabled();
   await expect(page.locator('[data-bind="display.theme"]')).toBeVisible();
   await page.locator('#revert').click();
@@ -237,120 +215,58 @@ test('both settings language selectors stay in sync and Revert restores the save
   await expect(page.locator('#save')).toBeDisabled();
 });
 
-test('a widget title typed in Turkish uses Turkish capitals', async ({ page }) => {
+// A widget title the user typed keeps its own letters: text-transform uppercases it for the language on screen.
+test('a widget title typed by the user keeps its accented letters when uppercased', async ({ page }) => {
   await page.goto('/panel/');
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('pb-demo-config', JSON.stringify({
       night: { enabled: false }, rules: [], shortcuts: [],
-      display: { language: 'tr' },
+      display: { language: 'es' },
       pages: [{ id: 'one', title: 'One', widgets: [
         { id: 'inbox', type: 'inbox', x: 0, y: 0, w: 6, h: 4 },
         { id: 'sw', type: 'stopwatch', x: 6, y: 0, w: 3, h: 3 },
-        { id: 'tm', type: 'timer', x: 9, y: 0, w: 3, h: 3, options: { label: 'içecek' } },
+        { id: 'tm', type: 'timer', x: 9, y: 0, w: 3, h: 3, options: { label: 'café' } },
       ] }],
     }));
   });
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   // innerText is the rendered text, so it shows what text-transform made of it; the widgets are laid out in order
   const title = (i) => page.locator('.w-title').nth(i).evaluate((e) => e.innerText.split('\n')[0].trim());
-  await expect.poll(() => title(2)).toBe('İÇECEK');
+  await expect.poll(() => title(2)).toBe('CAFÉ');
 });
 
-
-test('the saved Japanese preference reaches the settings and the phone panel', async ({ page }) => {
+test('the saved Portuguese preference reaches the settings and the phone panel', async ({ page }) => {
   await page.goto('/settings/#general');
   await expect(page.locator('#save')).toBeDisabled();
-  await page.locator('#langSel').selectOption('ja');
-  await expect(page.locator('#save')).toHaveText('保存');
+  await page.locator('#langSel').selectOption('pt-BR');
+  await expect(page.locator('#save')).toHaveText('Salvar');
   await page.locator('#save').click();
   await expect(page.locator('#save')).toBeDisabled();
   await page.reload();
-  await expect(page.locator('#displayLangSel')).toHaveValue('ja');
+  await expect(page.locator('#displayLangSel')).toHaveValue('pt-BR');
   await page.goto('/panel/');
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
-  await expect(page.locator('#dots .page-all')).toHaveAttribute('title', /[^\x00-\x7f]/);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
+  await expect(page.locator('#dots .page-all')).toHaveAttribute('title', /Todas as páginas/);
 });
 
-test('Arabic pages still turn: the pager keeps scrolling left to right', async ({ page }) => {
-  await page.goto('/panel/');
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('pb-demo-config', JSON.stringify({
-      night: { enabled: false }, rules: [], shortcuts: [],
-      display: { language: 'ar' },
-      pages: [
-        { id: 'one', title: 'One', widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 3, h: 2 }] },
-        { id: 'two', title: 'Two', widgets: [{ id: 'b', type: 'clock', x: 0, y: 0, w: 3, h: 2 }] },
-      ],
-    }));
-  });
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  await expect(page.locator('#pager')).toHaveCSS('direction', 'ltr');
-  await expect(page.locator('#pager > .page').first()).toHaveCSS('direction', 'rtl');
-  await page.evaluate(async () => { const { goPage } = await import('/panel/main.js'); goPage(1, true); });
-  const second = await page.locator('#pager > .page').nth(1).boundingBox();
-  expect(Math.abs(second.x)).toBeLessThan(2); // the second page is the one on screen
-});
-
-test('Arabic reads right to left without moving saved widget coordinates', async ({ page }) => {
-  await show(page, [
-    { id: 'left', type: 'chart', x: 0, y: 0, w: 3, h: 2, options: { metrics: ['cpu'] } },
-    { id: 'right', type: 'clock', x: 9, y: 0, w: 3, h: 2 },
-  ]);
-  await page.evaluate(() => {
-    const cfg = JSON.parse(localStorage.getItem('pb-demo-config'));
-    cfg.display.language = 'ar';
-    localStorage.setItem('pb-demo-config', JSON.stringify(cfg));
-  });
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  const widgets = page.locator('.grid .w');
-  await expect(widgets).toHaveCount(2);
-  await expect(widgets.first()).toHaveCSS('direction', 'rtl');
-  const left = await widgets.first().boundingBox();
-  const right = await widgets.last().boundingBox();
-  expect(left.x).toBeLessThan(right.x);
-  await expect(widgets.first().locator('canvas').first()).toHaveCSS('direction', 'ltr');
-
-  await page.keyboard.press('o');
-  const preview = page.locator('.ov-map').first().locator('span');
-  await expect(preview).toHaveCount(2);
-  const previewLeft = await preview.first().boundingBox();
-  const previewRight = await preview.last().boundingBox();
-  expect(previewLeft.x).toBeLessThan(previewRight.x);
-});
-
-test('Arabic settings wraps a long adb path and localizes the appearance defaults', async ({ page }) => {
-  await page.setViewportSize({ width: 1120, height: 780 });
-  await page.goto('/settings/#general');
-  await page.locator('#langSel').selectOption('ar');
-  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-  await expect(page.locator('#appearanceSettings output').first()).toHaveText('تلقائي');
-  const fits = await page.locator('#adbFound').evaluate((hint) => {
-    hint.textContent = 'C:\\platform-tools\\' + 'long-directory\\'.repeat(18) + 'adb.exe';
-    return hint.scrollWidth <= hint.clientWidth &&
-      document.documentElement.scrollWidth <= window.innerWidth;
-  });
-  expect(fits).toBe(true);
-});
-
-test('follow system distinguishes Traditional Chinese and the legacy Indonesian tag', async ({ page }) => {
+// Following the system: an exact tag wins, every other Portuguese falls back to the Brazilian dictionary, and a
+// language the panel does not have (or a name Object already carries) reads English.
+test('follow system matches the tag, keeps Portuguese together and falls back to English', async ({ page }) => {
   await page.goto('/panel/');
   const resolved = await page.evaluate(() => {
     const i18n = window.PhoneBoxI18n;
-    return ['zh-Hant-TW', 'zh-HK', 'zh_CN', 'in-ID', 'xx', 'constructor'].map((tag) => {
+    return ['pt-BR', 'pt-PT', 'pt', 'es-MX', 'en-GB', 'de-DE', 'xx', 'constructor'].map((tag) => {
       Object.defineProperty(navigator, 'languages', { value: [tag], configurable: true });
       return i18n.resolveLang('auto');
     });
   });
-  expect(resolved).toEqual(['zh-Hant', 'zh-Hant', 'zh', 'id', 'en', 'en']);
+  expect(resolved).toEqual(['pt-BR', 'pt-BR', 'pt-BR', 'es', 'en', 'en', 'en', 'en']);
 });
 
 
-for (const [language, direction, periods] of [['ar', 'rtl', ['ص', 'م']], ['en', 'ltr', ['am', 'pm']]]) {
+for (const [language, month, periods] of [['es', /enero/, ['a. m.', 'p. m.']], ['en', /January/, ['am', 'pm']]]) {
   test(`the clock is centered and keeps time in order (${language})`, async ({ page }) => {
     await page.route('https://api.open-meteo.com/v1/forecast?*', route => route.fulfill({ json: {
       current: { weather_code: 0, is_day: 1, temperature_2m: 16, apparent_temperature: 15 },
@@ -413,15 +329,12 @@ for (const [language, direction, periods] of [['ar', 'rtl', ['ص', 'م']], ['en'
       expect(media.x).toBeGreaterThanOrEqual(bounds.x + bounds.width - 1);
     }
 
-    await expect(date).toHaveCSS('direction', direction);
-    await expect(date).toHaveText(language === 'ar' ? /يناير/ : /January/);
-    await expect(page.locator('#nClock')).toHaveCSS('direction', 'ltr');
-    await expect(page.locator('#nDate')).toHaveCSS('direction', direction);
+    await expect(date).toHaveText(month);
   });
 }
 
-for (const [language, direction, period] of [['ar', 'rtl', 'م'], ['en', 'ltr', 'pm']]) {
-  test(`clock start alignment follows the reading direction for old and new settings (${language})`, async ({ page }) => {
+for (const [language, period] of [['es', 'p. m.'], ['en', 'pm']]) {
+  test(`clock start alignment holds for old and new settings (${language})`, async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 720 });
     await page.clock.setFixedTime(new Date(2026, 0, 1, 22, 24, 35));
     await page.route('https://api.open-meteo.com/v1/forecast?*', route => route.fulfill({ json: {
@@ -440,28 +353,26 @@ for (const [language, direction, period] of [['ar', 'rtl', 'م'], ['en', 'ltr', 
       await expect(widget.locator('.status .dot.on')).toBeVisible();
       await expect(widget.locator('.wx-temp')).toHaveText('16°');
       await expect(widget.locator('.clock span')).toHaveText(['10', ':', '24', '35', period]);
-      await expect(widget.locator('.date')).toHaveCSS('direction', direction);
       await expect(widget.locator('.date')).toHaveCSS('text-align', 'start');
-      const offsets = await widget.evaluate((box, rtl) =>
+      const offsets = await widget.evaluate((box) =>
         ['.status', '.clock', '.date', '.wx'].map(selector => {
           const row = box.querySelector(selector);
           const bounds = row.getBoundingClientRect();
-          const edge = rtl ? 'right' : 'left';
           const content = selector === '.date'
             ? (() => { const range = document.createRange(); range.selectNodeContents(row); return range.getBoundingClientRect(); })()
-            : (rtl && selector === '.clock' ? row.lastElementChild : row.firstElementChild).getBoundingClientRect();
-          return Math.abs(content[edge] - bounds[edge]);
-        }), direction === 'rtl');
+            : row.firstElementChild.getBoundingClientRect();
+          return Math.abs(content.left - bounds.left);
+        }));
       for (const offset of offsets) expect(offset).toBeLessThan(2);
     }
   });
 }
 
-test('the clock uses the Japanese day period', async ({ page }) => {
+test('the clock uses the day period of the panel language', async ({ page }) => {
   await page.clock.setFixedTime(new Date(2026, 0, 1, 22, 24, 35));
-  await show(page, [{ id: 'jp', type: 'clock', x: 0, y: 0, w: 6, h: 4,
-    options: { status: false, weather: false } }], { language: 'ja', hour12: true });
-  await expect(page.locator('.w-clock .ap')).toHaveText('午後');
+  await show(page, [{ id: 'es', type: 'clock', x: 0, y: 0, w: 6, h: 4,
+    options: { status: false, weather: false } }], { language: 'es', hour12: true });
+  await expect(page.locator('.w-clock .ap')).toHaveText('p. m.');
 });
 
 test('the clock falls back to AM/PM when Intl has no day period', async ({ page }) => {
@@ -506,9 +417,9 @@ test('the clock alignment setting reads legacy left as Start and saves Center', 
   expect(saved).toBe('center');
 });
 
-test('the idle media widget uses the Arabic no-audio label', async ({ page }) => {
-  await show(page, [{ id: 'media', type: 'media', x: 0, y: 0, w: 8, h: 4, options: {} }], { language: 'ar' });
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+test('the idle media widget uses the localized nothing-playing label', async ({ page }) => {
+  await show(page, [{ id: 'media', type: 'media', x: 0, y: 0, w: 8, h: 4, options: {} }], { language: 'es' });
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   await expect(page.locator('.w-media')).toBeVisible();
   const label = await page.evaluate(async () => {
     const main = await import('/panel/main.js');
@@ -516,41 +427,44 @@ test('the idle media widget uses the Arabic no-audio label', async ({ page }) =>
     main.emit('state');
     return document.querySelector('.w-media .m-title').textContent;
   });
-  expect(label).toBe('لا يوجد صوت');
+  expect(label).toBe('No suena nada');
 });
 
-test('the Arabic template dialog inserts the saved page title literally', async ({ page }) => {
+// The heading is built by replacing {title} with the saved page title, so characters a replacement treats specially
+// ($&, $`) have to come through as typed.
+test('the template dialog inserts the saved page title literally', async ({ page }) => {
   const title = 'Budget $& <2026> "Q4"';
   await page.addInitScript((title) => {
     localStorage.setItem('pb-demo-config', JSON.stringify({
-      display: { language: 'ar' },
+      display: { language: 'pt-BR' },
       pages: [{ id: 'home', title, widgets: [] }],
     }));
   }, title);
   await page.goto('/settings/#pages');
   await expect(page.locator('#peHead input[type="text"]').nth(1)).toHaveValue(title);
-  await page.locator('#peHead').getByRole('button', { name: 'استبدال بقالب…' }).click();
-  await expect(page.locator('#modalBody h3')).toHaveText(`استبدال عناصر صفحة «${title}»`);
+  await page.locator('#peHead').getByRole('button', { name: 'Substituir por modelo…' }).click();
+  await expect(page.locator('#modalBody h3')).toContainText(title);
 });
 
-test('the shortcut delete button is localized in Arabic without changing its English label', async ({ page }) => {
+// The button's label is translated while the shortcut's own name, which the user typed, stays as it is.
+test('the shortcut delete button is localized without changing the shortcut name', async ({ page }) => {
   await page.goto('/settings/#shortcuts');
   await page.locator('#deck .key:not(.add)').first().click();
   const deleteButton = page.locator('#editor button.danger');
   await expect(deleteButton).toHaveAccessibleName('Delete');
   const shortcut = page.locator('#deck .key:not(.add) .kl').first();
   const label = await shortcut.textContent();
-  await page.locator('#langSel').selectOption('ar');
-  await expect(deleteButton).toHaveAccessibleName('حذف');
+  await page.locator('#langSel').selectOption('pt-BR');
+  await expect(deleteButton).toHaveAccessibleName('Excluir');
   await expect(shortcut).toHaveText(label);
   await page.evaluate(() => { location.hash = '#webhooks'; });
   const pushedDelete = page.locator('#whItems button').first();
-  await expect(pushedDelete).toHaveAccessibleName('حذف');
+  await expect(pushedDelete).toHaveAccessibleName('Excluir');
   await page.locator('#langSel').selectOption('en');
   await expect(pushedDelete).toHaveAccessibleName('Delete');
 });
 
-for (const language of ['ar', 'de']) {
+for (const language of ['es', 'pt-BR']) {
   test(`the calendar uses localized Monday-first weekday headings (${language})`, async ({ page }) => {
     await show(page, [{ id: 'calendar', type: 'calendar', x: 0, y: 0, w: 4, h: 4 }], { language });
     const headings = await page.evaluate(() => {
