@@ -42,7 +42,8 @@ test('Settings › Phones: a device home page lists its own pages, and empty fol
   await page.goto('/settings/#general');
   const card = page.locator('#phoneList .phone-row').first();
   await expect(card).toBeVisible();
-  const select = card.locator('select');
+  // the home page select by its own mark: the row carries another select ("the cable wins") as well
+  const select = card.locator('select[data-phone-home]');
   // empty is not "the first page": it is whatever Page switching sets for every device
   await expect(select.locator('option').first()).toHaveText('Same as all devices');
   await expect(select).toHaveValue('');

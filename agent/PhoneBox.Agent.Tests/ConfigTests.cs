@@ -168,6 +168,42 @@ public class ConfigTests
         Assert.Equal(0.01, Load("""{ "display": { "awayBrightness": 0.001 } }""").Display.AwayBrightness);
     }
 
+    // "the cable wins" is the old behaviour, so it stays on by default; a phone may answer it for itself, and only
+    // that phone's copy of the settings changes.
+    [Fact]
+    public void TheCableWinsByDefaultAndAPhoneCanAnswerItForItself()
+    {
+        Assert.True(Load("{}").Display.UsbWins);
+        Assert.False(Load("""{ "display": { "usbWins": false } }""").Display.UsbWins);
+
+        var c = Load("""
+        { "display": { "usbWins": true },
+          "phones": [ { "id": "desk", "name": "Desk" }, { "id": "shelf", "name": "Shelf", "usbWins": false } ] }
+        """);
+        Assert.Null(c.UsbWinsFor("desk"));       // follows the general setting
+        Assert.False(c.UsbWinsFor("shelf"));
+        Assert.Null(c.UsbWinsFor("unknown"));    // a phone that has never connected
+
+        // the phone's own answer replaces the general one in what that phone receives, and leaves the rest alone
+        var shelf = JsonSerializer.Serialize(c.ToPublic("shelf"), ConfigStore.WriteOpts);
+        var desk = JsonSerializer.Serialize(c.ToPublic("desk"), ConfigStore.WriteOpts);
+        Assert.Contains("\"usbWins\": false", shelf);
+        Assert.Contains("\"usbWins\": true", desk);
+        Assert.True(c.Display.UsbWins); // the stored settings are untouched
+    }
+
+    // An answer equal to the general setting is no override: it would otherwise stay behind and silently stop
+    // following a later change of the general one.
+    [Fact]
+    public void APhoneAnswerEqualToTheGeneralSettingIsNotStored()
+    {
+        var same = Load("""{ "display": { "usbWins": true }, "phones": [ { "id": "a", "usbWins": true } ] }""");
+        Assert.Null(same.Phones.Single().UsbWins);
+
+        var differs = Load("""{ "display": { "usbWins": true }, "phones": [ { "id": "a", "usbWins": false } ] }""");
+        Assert.False(differs.Phones.Single().UsbWins);
+    }
+
     [Fact]
     public void DisplayFinishSoundVolumeDefaultsAndRange()
     {

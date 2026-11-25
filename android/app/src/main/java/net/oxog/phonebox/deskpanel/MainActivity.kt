@@ -526,6 +526,13 @@ class MainActivity : Activity(), SensorEventListener {
         @JavascriptInterface
         fun setVolumeKeys(key: String, enabled: Boolean) { if (ok(key)) volumeKeysFlipPages = enabled }
 
+        /**
+         * Whether a plugged-in cable takes precedence over the computer chosen in the panel (Settings › Display).
+         * Off: the chosen computer — a hub, say — keeps serving the panel while the cable only charges.
+         */
+        @JavascriptInterface
+        fun setUsbWins(key: String, enabled: Boolean) { if (ok(key)) link.usbWins = enabled }
+
         /** Whether the phone is set to 24-hour time (Settings › System › Date & time). */
         @JavascriptInterface
         fun is24Hour(key: String): Boolean = if (ok(key)) DateFormat.is24HourFormat(this@MainActivity) else true

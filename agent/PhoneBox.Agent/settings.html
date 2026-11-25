@@ -759,6 +759,8 @@ nav a.on::before { color: var(--accent); }
         <label class="check"><input type="checkbox" data-bind="display.finishSound"> <span data-i18n="s.display.finishSound">Sound when a session finishes</span></label>
         <div class="field" style="max-width:420px"><label data-i18n="s.display.finishSoundVolume">Sound volume (% of the phone's media volume)</label><input type="number" min="10" max="100" data-bind="display.finishSoundVolume" data-type="int"></div>
         <label class="check"><input type="checkbox" data-bind="display.volumeKeys"> <span data-i18n="s.display.volumeKeys">The phone's volume keys switch pages</span></label>
+        <label class="check"><input type="checkbox" data-bind="display.usbWins"> <span data-i18n="s.display.usbWins">A connected USB cable outranks the computer chosen in the panel</span></label>
+        <span class="hint" data-i18n="s.display.usbWinsHint">On, a phone plugged into a computer always shows that computer. Off, it keeps the computer picked in the panel — a hub reading several computers, say — while the cable only charges; the cable is still used if that computer cannot be reached. Each phone can answer this for itself under Phones.</span>
         <label class="check"><input type="checkbox" data-bind="display.autoBrightness"> <span data-i18n="s.display.autoBrightness">Brightness follows the room (light sensor)</span></label>
         <label class="check"><input type="checkbox" data-bind="display.nightWhenDark"> <span data-i18n="s.display.nightWhenDark">Show the night screen whenever the room is dark</span></label>
         <label class="check"><input type="checkbox" data-bind="display.nightWhenUnreachable"> <span data-i18n="s.display.nightWhenUnreachable">Show the night screen when the computer is unreachable</span></label>
@@ -2386,10 +2388,17 @@ function renderPhones() {
       // this device's own home page: empty follows the global one (Pages › page switching)
       h('div', { class: 'field', style: { maxWidth: '260px', marginTop: '8px' } },
         h('label', {}, t('s.pageSwitch.homePage')),
-        h('select', { onchange: (e) => { entry(ph.id).homePage = e.target.value || null; changed(); } },
+        h('select', { 'data-phone-home': ph.id, onchange: (e) => { entry(ph.id).homePage = e.target.value || null; changed(); } },
           h('option', { value: '' }, t('s.phones.homeDefault')),
           ...cfg.pages.filter((p) => p.id && (all || chosen.includes(p.id))).map((p) =>
-            h('option', { value: p.id, selected: p.id === conf?.homePage }, plain(`${p.icon || ''} ${p.title}`))))));
+            h('option', { value: p.id, selected: p.id === conf?.homePage }, plain(`${p.icon || ''} ${p.title}`)))),
+      // whether a cable outranks the chosen computer, for this phone; empty follows Display
+      h('div', { class: 'field', style: { maxWidth: '260px', marginTop: '8px' } },
+        h('label', {}, t('s.phones.usbWins')),
+        h('select', { onchange: (e) => { entry(ph.id).usbWins = e.target.value === '' ? null : e.target.value === 'yes'; changed(); } },
+          h('option', { value: '', selected: conf?.usbWins == null }, t('s.phones.usbWinsDefault')),
+          h('option', { value: 'yes', selected: conf?.usbWins === true }, t('s.phones.usbWinsYes')),
+          h('option', { value: 'no', selected: conf?.usbWins === false }, t('s.phones.usbWinsNo'))))));
   }));
 }
 
@@ -3971,7 +3980,7 @@ function fillDefaults() {
   cfg.pages = fitPages(cfg.pages); cfg.shortcuts ??= []; cfg.rules ??= []; cfg.display ??= {}; cfg.display.wallpaper ??= { dim: 45, blur: 0 }; cfg.night = { enabled: true, start: '00:30', end: '07:30', brightness: 0.02, ...cfg.night }; cfg.weather ??= {}; cfg.weather.unit ??= 'celsius'; cfg.weather.model ??= ''; cfg.photos ??= { source: 'folder', folder: '', subfolders: true, immichUrl: '', immichKey: '', immichAlbum: '', immichAlbumName: '' }; cfg.lan ??= { enabled: false, port: 8766 }; cfg.updates ??= { auto: true, repo: 'duartefilipe/phonebox' }; cfg.claude ??= { phoneApprovals: true, timeoutSec: 90, onlyWhenAway: false, shareSessionTitles: false, shareConversation: false, watchWsl: false }; cfg.claude.extraCredentialDirs ??= []; cfg.opencode ??= { phoneApprovals: false, timeoutSec: 90, onlyWhenAway: false, alwaysCountdownSec: 10, watchWsl: false, shareSessionTitles: false, sessions: false };
   cfg.codexBar ??= { providers: ['claude', 'codex', 'antigravity', 'grok'], rotate: true, pageSize: 2, rotateInterval: 8 };
   for (const [k, v] of Object.entries({ language: 'auto', hour12: false, idleReturnSec: 90, switchCountdownSec: 3, touchGraceSec: 20, minDwellSec: 15, holdMaxMin: 30, keepAwake: true, openOnConnect: true,
-    showSeconds: true, vibrate: true, finishToast: true, finishSound: false, finishSoundVolume: 70, volumeKeys: true, artTint: true, nightWhenUnreachable: false, unreachableNightDelayMin: 5, awayAtNight: true, awayBrightness: 0, proximityWake: true, orientation: 'landscape', tabletRows: false, theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
+    showSeconds: true, vibrate: true, finishToast: true, finishSound: false, finishSoundVolume: 70, volumeKeys: true, usbWins: true, artTint: true, nightWhenUnreachable: false, unreachableNightDelayMin: 5, awayAtNight: true, awayBrightness: 0, proximityWake: true, orientation: 'landscape', tabletRows: false, theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
   cfg.charge ??= { enabled: false, min: 50, max: 80, method: 'ha' };
   cfg.steam ??= { enabled: false };
 }

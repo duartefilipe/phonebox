@@ -32,7 +32,10 @@ import javax.net.ssl.X509TrustManager
  *    trusted (pinning), and every request carries the token.
  *
  * The phone remembers every computer it was paired with; one is active over Wi-Fi (the one last plugged in, or the one
- * picked in the panel's page overview). A USB cable always wins: the plugged-in computer is used and becomes active.
+ * picked in the panel's page overview). By default a USB cable wins: the plugged-in computer is used and becomes
+ * active. With "the cable wins" turned off (Settings › Display, per phone in Settings › Phones), the chosen computer
+ * is used instead — a hub keeps serving the panel while the cable only charges — and USB is left as the fallback for
+ * when that computer cannot be reached at all.
  */
 class AgentLink(private val context: Context) {
 
@@ -42,6 +45,13 @@ class AgentLink(private val context: Context) {
 
     @Volatile var route: Route = Route.NONE
         private set
+
+    /**
+     * Whether a plugged-in cable takes precedence over the computer chosen in the panel. The agent sends it with the
+     * settings (display.usbWins) and the panel hands it over; until then the old behaviour stands, so a phone that has
+     * not loaded its settings yet still reaches the computer on the cable.
+     */
+    @Volatile var usbWins: Boolean = true
 
     private val prefs = context.getSharedPreferences("pairing", Context.MODE_PRIVATE)
 
@@ -135,24 +145,34 @@ class AgentLink(private val context: Context) {
 
     /** Opens a long-lived GET (the live stream) over the best route; null when the PC is unreachable. */
     fun stream(path: String): Pair<Route, Reply>? {
-        usb("GET", path, STREAM_READ_TIMEOUT)?.let { route = Route.USB; return Route.USB to it }
-        wifi("GET", path, STREAM_READ_TIMEOUT)?.let { route = Route.WIFI; return Route.WIFI to it }
+        for (overCable in routeOrder) {
+            if (overCable) usb("GET", path, STREAM_READ_TIMEOUT)?.let { route = Route.USB; return Route.USB to it }
+            else wifi("GET", path, STREAM_READ_TIMEOUT)?.let { route = Route.WIFI; return Route.WIFI to it }
+        }
         return null
     }
+
+    /**
+     * Which route to try first, then the other as the fallback: the cable unless it was turned off. Both are always
+     * tried, so neither setting can leave the panel with no way to the agent.
+     */
+    private val routeOrder get() = if (usbWins) listOf(true, false) else listOf(false, true)
 
     /** Forwards a request (method + path with query) to the agent over the best available route. */
     fun request(method: String, pathAndQuery: String): Reply = request(method, pathAndQuery, null, null)
 
     fun request(method: String, pathAndQuery: String, body: ByteArray?, contentType: String?): Reply {
-        usb(method, pathAndQuery, 4000, body, contentType)?.let {
-            route = Route.USB
-            maybePair()
-            return it
-        }
-        wifi(method, pathAndQuery, 4000, body, contentType)?.let {
-            route = Route.WIFI
-            maybeRefreshMacs()
-            return it
+        for (overCable in routeOrder) {
+            if (overCable) usb(method, pathAndQuery, 4000, body, contentType)?.let {
+                route = Route.USB
+                maybePair()
+                return it
+            }
+            else wifi(method, pathAndQuery, 4000, body, contentType)?.let {
+                route = Route.WIFI
+                maybeRefreshMacs()
+                return it
+            }
         }
         route = Route.NONE
         return Reply(503, "application/json", ByteArrayInputStream("""{"error":"offline"}""".toByteArray()))

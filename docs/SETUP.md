@@ -11,16 +11,16 @@
 **Windows 10/11**: open PowerShell (a normal window, not *Run as administrator*) and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.ps1 | iex
 ```
 
 **Linux and macOS**: open a terminal and paste (run it as yourself, not with `sudo`):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.sh | bash
 ```
 
-Setup installs the [latest release](https://github.com/ersinkoc/phonebox/releases/latest) and anything missing:
+Setup installs the [latest release](https://github.com/duartefilipe/phonebox/releases/latest) and anything missing:
 
 1. **Checks the computer**: Windows x64; Linux x64 / ARM64 with glibc; macOS on Apple silicon or Intel.
 2. **Downloads and checks the agent**: the download must match the release's SHA-256 checksums. With the
@@ -65,11 +65,11 @@ and changes nothing.
 To pass options:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.ps1))) -NoPhone
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.ps1))) -NoPhone
 ```
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.sh | bash -s -- --no-phone
+curl -fsSL https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.sh | bash -s -- --no-phone
 ```
 
 </details>
@@ -138,7 +138,7 @@ curl -fsSL https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.sh | b
   Setup installs the app, or use *Settings › General › Install the phone app* later. Then the phone wakes up and
   opens the panel whenever it is plugged in.
 - **Over Wi-Fi only**, with no developer options or adb: install the APK from the
-  [release page](https://github.com/ersinkoc/phonebox/releases/latest) on the phone. Then on the computer turn on
+  [release page](https://github.com/duartefilipe/phonebox/releases/latest) on the phone. Then on the computer turn on
   *Settings › General › Wi-Fi & Tailscale*, click **Pair a phone over Wi-Fi** and scan the QR code (see
   [Wi-Fi & Tailscale](#wi-fi--tailscale)).
 
@@ -146,7 +146,7 @@ The settings are at <http://127.0.0.1:8765>, on Windows also from the tray icon.
 
 ### Other ways to install
 
-- **Manual download**: the [release](https://github.com/ersinkoc/phonebox/releases/latest) has the signed Android
+- **Manual download**: the [release](https://github.com/duartefilipe/phonebox/releases/latest) has the signed Android
   APK and agents for Windows x64, Linux x64/ARM64 and macOS Apple silicon/Intel, with SHA-256 checksums and build
   provenance. Unzip the agent and run it. It can update itself only from the install folder in the table above. On a Mac,
   the `.dmg` holds `PhoneBox.app`: drag it to Applications (or `~/Applications`) and open it. It has no window; the settings
@@ -158,7 +158,7 @@ The settings are at <http://127.0.0.1:8765>, on Windows also from the tray icon.
 - **Scoop** (Windows), which can then put the app on the phone from *Settings › General › Install the phone app*:
 
   ```powershell
-  scoop bucket add phonebox https://github.com/ersinkoc/phonebox
+  scoop bucket add phonebox https://github.com/duartefilipe/phonebox
   scoop install main/adb phonebox/phonebox
   ```
 
@@ -176,12 +176,12 @@ The settings are at <http://127.0.0.1:8765>, on Windows also from the tray icon.
   `JAVA_HOME` set and `ANDROID_HOME` or `android/local.properties` (`sdk.dir`) pointing at the SDK.
 
   ```powershell
-  git clone https://github.com/ersinkoc/phonebox; cd phonebox
+  git clone https://github.com/duartefilipe/phonebox; cd phonebox
   .\scripts\install.ps1 -Apk -Autostart   # add -Serial <id> with several devices; -BuildApk always rebuilds the app
   ```
 
   ```sh
-  git clone https://github.com/ersinkoc/phonebox && cd phonebox
+  git clone https://github.com/duartefilipe/phonebox && cd phonebox
   ./scripts/install.sh --apk --autostart  # systemd user service (Linux) or launchd agent (macOS)
   ```
 
@@ -200,14 +200,98 @@ On macOS, `launchctl unload ~/Library/LaunchAgents/net.oxog.phonebox.agent.plist
 with the same path starts it again. While the agent is off, the phone shows that it is offline and reconnects by
 itself once the agent runs again.
 
-### Uninstall
+## Which pieces to install where
+
+PhoneBox has two programs, and one of them is the same file in both roles:
+
+| Piece | What it is | Where it runs |
+|---|---|---|
+| **Agent** | reads the computer (metrics, media, processes, sessions) and answers the phones | every computer you want to see |
+| **Hub** | the same agent started with `--hub`: reads the other computers' agents and serves the phones | one home server, usually in Docker |
+| **Phone app** | the panel itself | every phone or tablet |
+
+A computer that is only *read* needs the plain agent — never a second hub. One hub is enough for the whole house.
+
+<details open><summary><b>The phone app, on the phone plugged in now</b></summary>
+
+With the agent running on this computer, **Settings › Connections › Install the phone app** does it for you. By hand,
+with the phone on USB and developer options on:
+
+```sh
+adb install -r app-debug.apk       # a release download, or your own build
+adb shell am start -n net.oxog.phonebox.deskpanel/.MainActivity
+```
+
+Without a cable: open the [release](https://github.com/duartefilipe/phonebox/releases/latest) on the phone, install the
+APK, then pair it over Wi-Fi (see [Wi-Fi & Tailscale](#wi-fi--tailscale)).
+
+</details>
+
+<details><summary><b>Only the agent, on a computer the hub will read</b></summary>
+
+The [quick start](#quick-start) above, with `-NoPhone` / `--no-phone`: no adb, no phone app, just the agent.
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ersinkoc/phonebox/main/scripts/uninstall.ps1))) # add -Purge -Apk
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.ps1))) -NoPhone
 ```
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ersinkoc/phonebox/main/scripts/uninstall.sh | bash -s --   # add --purge --apk
+curl -fsSL https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.sh | bash -s -- --no-phone
+```
+
+Then, on that computer: **Settings › General › Wi-Fi & Tailscale** on, restart the agent, **Pair a phone over Wi-Fi**
+and **Copy the pairing link**. Paste that link into the hub under **Settings › General › Computers**. The hub now reads
+it like a phone would; the computer itself knows nothing about the hub.
+
+</details>
+
+<details><summary><b>The hub, in Docker (the usual way)</b></summary>
+
+On the server, with Docker: see [docker/README.md](../docker/README.md) for the Portainer fields.
+
+```sh
+git clone https://github.com/duartefilipe/phonebox && cd phonebox
+PHONEBOX_PASSWORD='choose one' docker compose -f docker/docker-compose.yml up -d --build
+```
+
+The image is built on the server from the repository; nothing is pulled from a registry. Settings then live on
+`https://<server>:8767` (its own certificate, so the browser warns once) and the phones connect on 8766.
+
+</details>
+
+<details><summary><b>The hub without Docker, or beside an agent on the same computer</b></summary>
+
+The hub is the agent with `--hub`, so any computer can be one. It needs `PHONEBOX_PASSWORD` for its settings page to
+open from the network, and a settings file of its own:
+
+```powershell
+$env:PHONEBOX_PASSWORD = 'choose one'
+& "$env:LOCALAPPDATA\PhoneBox\app\PhoneBoxAgent.exe" --hub --config "$env:APPDATA\PhoneBox\hub.json" --port 8775
+```
+
+```sh
+PHONEBOX_PASSWORD='choose one' ~/.local/share/PhoneBox/app/PhoneBoxAgent --hub --config ~/.config/PhoneBox/hub.json --port 8775
+```
+
+Running both on one computer needs three things kept apart, or the second one refuses to start:
+
+- `--config`: its own settings file, so the two do not overwrite each other.
+- `--port`: the local settings port (8765 by default). The example uses 8775 for the hub, leaving the agent on 8765.
+- The Wi-Fi port (8766 by default): change one of them under **Settings › General › Wi-Fi & Tailscale**, since both
+  listen on the network.
+
+`PHONEBOX_ADMIN_PORT` moves the hub's own settings page (8767 by default).
+
+</details>
+
+### Uninstall
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/duartefilipe/phonebox/main/scripts/uninstall.ps1))) # add -Purge -Apk
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/duartefilipe/phonebox/main/scripts/uninstall.sh | bash -s --   # add --purge --apk
 ```
 
 Without options it removes the program and the start-at-login entry and keeps the settings. `-Purge` / `--purge` also

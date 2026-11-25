@@ -72,6 +72,9 @@ public sealed class AgentConfig
         return home is not null && PagesFor(deviceId).Any(p => p.Id == home && p.Enabled) ? home : null;
     }
 
+    /// <summary>This phone's own answer to "the cable wins" (Settings › Phones); null = follow the general setting.</summary>
+    public bool? UsbWinsFor(string? deviceId) => Phones.FirstOrDefault(p => p.Id == deviceId)?.UsbWins;
+
     /// <summary>The part sent to the phone: commands (shortcut cmd/args/cwd, command widget scripts) are never included.</summary>
     /// <param name="shortcutIcon">A shortcut's picture: its revision (null when it has none), and whether the user uploaded
     /// it rather than it being the program's own icon; only an upload may fill a Big button (a program icon is small, or on
@@ -84,7 +87,8 @@ public sealed class AgentConfig
         weather = Weather,
         codexBar = CodexBar,
         night = Night,
-        display = Display,
+        // the phone's own "the cable wins" choice (Settings › Phones) replaces the general one for that device
+        display = UsbWinsFor(deviceId) is { } usbWins ? Display.With(usbWins) : Display,
         // this device's own home page (Settings › Phones), when it has one among the pages it shows
         homePage = HomePageFor(deviceId),
         wallpaperRev = wallpaperRev?.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -258,6 +262,12 @@ public sealed class DisplayConfig
     /// which is too dark to read across a desk.
     /// </summary>
     public double AwayBrightness { get; set; }
+    /// <summary>
+    /// Whether a plugged-in USB cable outranks the computer chosen in the panel. On (the default) the cable's computer
+    /// is used and becomes active, as it always was. Off: the chosen computer — a hub reading several computers, say —
+    /// keeps serving the panel while the cable only charges; USB is still the fallback when it cannot be reached.
+    /// </summary>
+    public bool UsbWins { get; set; } = true;
     /// <summary>A hand near the phone (proximity sensor) wakes the night screen.</summary>
     public bool ProximityWake { get; set; } = true;
     /// <summary>OLED burn-in protection: every 2 minutes the panel moves by a few pixels and the night clock drifts.</summary>
@@ -298,6 +308,17 @@ public sealed class DisplayConfig
     public int MinDwellSec { get; set; } = 15;
     /// <summary>A rule keeps its page at most this many minutes, then the idle return may take over; 0 = as long as the rule lasts.</summary>
     public int HoldMaxMin { get; set; } = 30;
+
+    /// <summary>
+    /// A shallow copy with another <see cref="UsbWins"/>, for the answer sent to one phone (Settings › Phones). The
+    /// stored settings are left alone: only what that device receives differs.
+    /// </summary>
+    public DisplayConfig With(bool usbWins)
+    {
+        var copy = (DisplayConfig)MemberwiseClone();
+        copy.UsbWins = usbWins;
+        return copy;
+    }
 }
 
 public sealed class LanConfig
@@ -591,6 +612,12 @@ public sealed class PhoneConfig
     public List<string>? Pages { get; set; }
     /// <summary>The page this device returns to (idle return, home button); null = the global home page.</summary>
     public string? HomePage { get; set; }
+    /// <summary>
+    /// Whether a cable outranks the computer chosen in the panel, for this phone only; null follows
+    /// <see cref="DisplayConfig.UsbWins"/>. A phone that sits on a desk charger next to a hub can ignore the cable
+    /// while another, plugged into the computer it controls, keeps using it.
+    /// </summary>
+    public bool? UsbWins { get; set; }
 }
 
 public sealed class FeedSource
@@ -942,6 +969,8 @@ public sealed partial class ConfigStore(string path)
             ph.Pages = ph.Pages?.Where(id => !string.IsNullOrWhiteSpace(id)).Select(PageId).Distinct().ToList();
             if (ph.Pages is { Count: 0 }) ph.Pages = null;
             ph.HomePage = string.IsNullOrWhiteSpace(ph.HomePage) ? null : PageId(ph.HomePage).Trim();
+            // the same answer as the general setting is no override at all: store it as "follow the general one"
+            if (ph.UsbWins == c.Display.UsbWins) ph.UsbWins = null;
         }
         c.Ping ??= new();
         c.Ping.Adapters = (c.Ping.Adapters ?? []).Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(16).ToList();
