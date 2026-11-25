@@ -357,7 +357,7 @@ The weather and air quality come straight from Open-Meteo over HTTPS, and Androi
 certificate authority its certificate chains to (Let's Encrypt's ISRG Root X1). Download `isrgrootx1.pem` from
 [letsencrypt.org/certificates](https://letsencrypt.org/certificates/), rename it to `isrgrootx1.crt`, and install it
 under **Settings › Security › Install from device storage**. The panel itself talks to the computer and is not
-affected. Thanks to [phongnguyen2277](https://github.com/phongnguyen2277) for finding this (#184).
+affected. Thanks to  for finding this (#184).
 </details>
 
 <details><summary><b>I want the volume keys to change the phone's volume.</b></summary>
