@@ -37,33 +37,41 @@ Decisão: trocar a "ponte da agenda" (ver abaixo) pelo **endereço secreto no fo
 cadastrado direto no PhoneBox. O agente busca o link a cada 10 minutos (`CalendarMonitor.cs`), sem login e sem
 vencimento.
 
-Estado em 25/11/2026: a troca **ainda não foi feita**. A ponte Python continua rodando (`pythonw agenda_ics.py`) e as
-três agendas cadastradas no agente do Windows ainda apontam para `http://127.0.0.1:8770/cal/N.ics`. Só o dono das
-agendas consegue copiar os endereços secretos, por isso os passos abaixo são manuais.
+Estado em 25/11/2026: **feito.** As três agendas do agente do Windows apontam agora para links diretos, a busca roda
+sem erro (`/api/calendar`: 0 erros, 14 eventos) e a ponte Python foi desligada. Confirmado que a agenda continua
+atualizando com a ponte fora do ar.
 
 O passo a passo também está **dentro do painel**, em **Geral › Agendas › "Passo a passo: uma agenda do Google"**
 (recolhível), para não precisar abrir este arquivo: chaves `s.cal.googleSteps` e `s.cal.googleStep1`…`5` mais
 `s.cal.googleNotes`, nos três idiomas.
 
-- [ ] Para **cada** agenda: abrir `calendar.google.com`, passar o mouse na agenda em **Minhas agendas**, clicar nos
+- [x] Para **cada** agenda: abrir `calendar.google.com`, passar o mouse na agenda em **Minhas agendas**, clicar nos
       **⋮** › **Configurações e compartilhamento**, descer até **Integrar agenda** e copiar o **Endereço secreto no
       formato iCal** (o que termina em `/basic.ics`, não o endereço público). Colar em **Geral › Agendas** do PhoneBox
-      (no hub, ou no agente do Windows enquanto o hub não sobe) e salvar. **Não** pedir nem registrar os links no chat
-      ou em arquivos do repositório — eles valem como senha daquela agenda.
+      e salvar. **Não** pedir nem registrar os links no chat ou em arquivos do repositório — eles valem como senha
+      daquela agenda.
 - [ ] Se um endereço vazar: **Redefinir URLs particulares**, na mesma página do Google, invalida o antigo (e exige
       colar o novo no PhoneBox).
-- [ ] Agenda compartilhada: o endereço secreto só aparece com permissão de "fazer alterações e gerenciar
-      compartilhamento"; sem ela, quem é dono da agenda precisa passar o link.
-- [ ] Agenda assinada de fonte externa (`…@import.calendar.google.com`, o caso da agenda "Calendário" aqui): o Google
-      não mostra endereço secreto; usar o link ICS original da fonte.
-- [ ] Depois de conferir que os eventos aparecem: remover do PhoneBox as agendas antigas que apontam para
-      `http://127.0.0.1:8770/cal/N.ics`, apagar o atalho **"PhoneBox Agenda"** da pasta Inicializar do Windows e encerrar
-      o processo `pythonw` da ponte. Sugerir ao usuário revogar o acesso do app em myaccount.google.com/permissions.
+- [x] Agenda assinada de fonte externa (era o caso da agenda "Calendário"): o Google não mostra endereço secreto.
+      Resolvida com o **ICS publicado da fonte original** (Outlook / Office 365), sem passar pelo Google.
+- [x] Ponte aposentada: processo `pythonw` encerrado, porta 8770 livre e o atalho **"PhoneBox Agenda"** removido da
+      pasta Inicializar do Windows (está na Lixeira, se precisar voltar). A pasta `D:\Anakin\agenda-ics` (fora deste
+      repositório) ficou no disco e pode ser apagada à mão, junto com o `token.json` dentro dela.
+- [ ] Revogar o acesso do app da ponte em myaccount.google.com/permissions (só o usuário pode fazer, no navegador).
+- [ ] Recadastrar as agendas **no hub** quando ele subir, e deixar o `Geral › Agendas` do Windows vazio: é com o PC
+      desligado que a agenda precisa seguir atualizando.
+
+Nota: uma agenda sem eventos nos próximos 14 dias aparece vazia no painel sem que haja erro — o agente só busca essa
+janela (`CalendarMonitor.DaysAhead`). Foi o caso da agenda "Pessoal" aqui, cujo próximo evento é em 29/12.
 
 ### 2. Subir o hub no Portainer
 
-- [ ] Stack em **Portainer › Stacks › Add stack › Repository**, compose `docker/docker-compose.yml`, variável
-      `PHONEBOX_PASSWORD` obrigatória (passo a passo em `docker/README.md`).
+- [ ] Stack em **Portainer › Stacks › Add stack › Repository** (passo a passo em `docker/README.md`):
+      nome `phonebox-hub`; **Authentication** desligado (o repositório é público); URL
+      `https://github.com/duartefilipe/phonebox`; reference `refs/heads/main`; compose path
+      `docker/docker-compose.yml`; e em **Environment variables** a variável `PHONEBOX_PASSWORD` (obrigatória — sem ela
+      a stack falha de propósito). A primeira construção leva alguns minutos: o servidor baixa o SDK do .NET e compila
+      o agente. Depois de um `git push`, atualizar com **Pull and redeploy**.
 - [ ] No agente do Windows: ligar **Geral › Wi-Fi e Tailscale**, reiniciar, copiar o link de pareamento e adicionar o PC
       no hub em **Geral › Computadores**.
 - [ ] Levar o layout: **Pages › Exportar** no agente do Windows e **Importar** no hub (Home, página "PC desligado",
@@ -81,13 +89,15 @@ console de apps e iniciar jogos da Steam.
 
 Nada pendente aqui no momento.
 
-## A "ponte da agenda" (a ser aposentada)
+## A "ponte da agenda" (aposentada em 25/11/2026)
 
-Programa Python fora deste repositório que usava o OAuth (somente leitura) de um app do Google Cloud em modo
-"Testando" e servia cada agenda como ICS em `http://127.0.0.1:8770/cal/N.ics` para o agente do Windows. Problemas
-que motivaram a troca pelo link iCal: o login vence a cada 7 dias com o app em "Testando", e ela só roda com o PC
-ligado. Se for mantida em vez do link iCal, precisaria publicar o app no Google Cloud e rodá-la como container ao lado
-do hub.
+Programa Python fora deste repositório (`D:\Anakin\agenda-ics`) que usava o OAuth (somente leitura) de um app do
+Google Cloud em modo "Testando" e servia cada agenda como ICS em `http://127.0.0.1:8770/cal/N.ics` para o agente do
+Windows. Problemas que motivaram a troca pelo link iCal: o login vence a cada 7 dias com o app em "Testando", e ela só
+roda com o PC ligado — justamente o contrário do que a página "PC desligado" precisa.
+
+Está desligada: processo encerrado, atalho removido da pasta Inicializar e nenhuma agenda do PhoneBox aponta mais para
+a porta 8770. Fica registrada aqui só para o caso de alguém reencontrar a pasta no disco.
 
 ## Como compilar, instalar e testar
 
