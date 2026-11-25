@@ -1432,12 +1432,12 @@ function renderPageEditor() {
             p.enabled = e.target.checked; changed(); renderTabsOnly();
           } }), h('span')), t('s.js.shown')),
         // the page shown while the PC is off: only one at a time, and it leaves the pages you swipe through
-        h('label', { class: 'check', title: 'Mostrada no lugar da tela noturna quando o celular perde o PC (depois do tempo em Geral › Tela); some da troca de páginas normal' }, h('label', { class: 'switch' },
+        h('label', { class: 'check', title: t('s.js.pcOffHint') }, h('label', { class: 'switch' },
           h('input', { type: 'checkbox', checked: p.offline === true, onchange: (e) => {
             for (const x of cfg.pages) if (x !== p) delete x.offline;
             if (e.target.checked) { p.offline = true; p.enabled = true; } else delete p.offline;
             changed(); renderPageEditor();
-          } }), h('span')), 'PC desligado'),
+          } }), h('span')), t('s.js.pcOff')),
         h('button', { class: 'icon-btn', title: t('s.js.moveEarlier'), disabled: selPage === 0, onclick: () => move(-1) }, icon('chevron-up')),
         h('button', { class: 'icon-btn', title: t('s.js.moveLater'), disabled: selPage === cfg.pages.length - 1, onclick: () => move(1) }, icon('chevron-down'))),
       h('div', { class: 'row', style: { gap: '6px', marginTop: '10px' } },

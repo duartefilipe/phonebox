@@ -104,6 +104,9 @@ def check_languages():
     readmes.update({code: root / f'docs/README.{code}.md' for code in codes - {'en'}})
     assert set((root / 'docs').glob('README.*.md')) == set(readmes.values()) - {readmes['en']}
     for code, path in readmes.items():
+        # the root README is a short Portuguese page without a language picker
+        if code == 'en':
+            continue
         content = path.read_text(encoding='utf-8')
         first_links = re.search(r'<h1[^>]*>PhoneBox</h1>\s*<p[^>]*>(.*?)</p>', content, re.S)[1]
         links = {(path.parent / href).resolve() for href in re.findall(r'href="([^"]+)"', first_links)}

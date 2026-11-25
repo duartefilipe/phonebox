@@ -49,6 +49,9 @@ def main():
           '<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(xml, encoding='unicode') + '\n')
 
     for current, path in readmes.items():
+        # the root README is a short Portuguese page without a language picker
+        if current == 'en':
+            continue
         links = []
         for code, name in languages.items():
             if code == current:
