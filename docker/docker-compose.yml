@@ -1,0 +1,18 @@
+# PhoneBox hub for Docker / Portainer (Stacks › Add stack). See docker/README.md.
+services:
+  phonebox-hub:
+    image: ghcr.io/duartefilipe/phonebox-hub:latest
+    # or build it from this repository instead of pulling the image:
+    # build: { context: https://github.com/duartefilipe/phonebox.git#main }
+    container_name: phonebox-hub
+    # the host's own network: the pairing QR code then offers the server's real LAN address to the phones
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PHONEBOX_PASSWORD: "change-this-password"
+      # PHONEBOX_ADMIN_PORT: "8767"
+    volumes:
+      - phonebox-data:/data
+
+volumes:
+  phonebox-data:

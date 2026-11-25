@@ -52,6 +52,8 @@ public sealed class AgentConfig
     public SteamConfig Steam { get; set; } = new();
     /// <summary>The phone's microphone, played into a virtual audio cable (Windows; off by default).</summary>
     public PhoneMicConfig PhoneMic { get; set; } = new();
+    /// <summary>Hub mode: the computers this agent reads for the phones (their keys never go to a phone).</summary>
+    public HubConfig Hub { get; set; } = new();
 
     /// <summary>The pages a phone shows: its own selection (Settings › Phones), or all of them.</summary>
     public IEnumerable<PageConfig> PagesFor(string? deviceId)
@@ -88,7 +90,7 @@ public sealed class AgentConfig
         wallpaperRev = wallpaperRev?.ToString(System.Globalization.CultureInfo.InvariantCulture),
         pages = PagesFor(deviceId).Select(p => new
         {
-            p.Id, p.Title, p.Icon, p.Enabled, p.Offline, p.IdleSec, p.Appearance,
+            p.Id, p.Title, p.Icon, p.Enabled, p.Offline, p.OfflineSource, p.Source, p.IdleSec, p.Appearance,
             widgets = (p.Widgets ?? []).Select(w => new
             {
                 w.Id, w.Type, w.X, w.Y, w.W, w.H, w.Appearance,
@@ -108,6 +110,8 @@ public sealed class AgentConfig
         charge = new { Charge.Enabled, Charge.Min, Charge.Max },
         // OpenCode prompts: how long the Allow always button waits before it can be pressed (it saves a pattern)
         opencode = new { OpenCode.AlwaysCountdownSec },
+        // hub mode: the computers by name, for the panel's pages and widgets; their addresses and keys stay here
+        sources = Hub.Sources.Select(s => new { s.Id, s.Name }),
     };
 
     /// <summary>Ending processes is allowed when an enabled page has a processes widget that allows it.</summary>
@@ -356,6 +360,10 @@ public sealed class PageConfig
     /// <summary>Shown (instead of the night screen) while the computer is unreachable, and left out of the pages you
     /// swipe through; the first enabled page marked so is used.</summary>
     public bool Offline { get; set; }
+    /// <summary>Hub mode: with <see cref="Offline"/>, the computer whose going off shows this page; null = when every computer is off.</summary>
+    public string? OfflineSource { get; set; }
+    /// <summary>Hub mode: the computer this page's widgets show (a widget's own "source" option wins); null = the first one.</summary>
+    public string? Source { get; set; }
     /// <summary>Return home after this many idle seconds on this page; null = the display setting, 0 = stay.</summary>
     public int? IdleSec { get; set; }
     /// <summary>Widgets on a 12 x 6 grid.</summary>
@@ -1115,6 +1123,15 @@ public sealed partial class ConfigStore(string path)
         }
         catch { }
         Save(JsonSerializer.Serialize(c, WriteOpts), version);
+    }
+
+    /// <summary>Hub mode: the phones only connect over Wi-Fi, so its option is turned on (and saved) at start.</summary>
+    public void EnableLan()
+    {
+        var c = JsonSerializer.Deserialize<AgentConfig>(JsonSerializer.Serialize(Get(), WriteOpts), ReadOpts)!;
+        if (c.Lan.Enabled) return;
+        c.Lan.Enabled = true;
+        Save(JsonSerializer.Serialize(c, WriteOpts));
     }
 
     private static string Cap(string s, int max) => s.Length > max ? s[..max] : s;

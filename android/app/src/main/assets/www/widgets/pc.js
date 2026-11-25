@@ -1,4 +1,4 @@
-import { $, API, D, curPage, pages, PANEL_HEADERS, PREVIEW, LOCALE, Q_STYLE, api, bridge, cfg, cfgVersion, configMark, configReadSince, localWriteStored, loadConfig, color, cssVar, rulesPaused, toggleRulesPause, fillIcon, fmtDur, fmtHM, fmtMem, gotoPageRef, gpuMem, gpusOf, h, en, haptic, icon, openSheet, paceInfo, pad, pairedPcs, quotaProviders, r1, shortDur, shortGpu, store, switchPc, t, tick, toast, transport, emo, labelled, rich, tp, tpv, quotaText } from '../main.js';
+import { $, API, D, curPage, pages, PANEL_HEADERS, PREVIEW, LOCALE, Q_STYLE, api, bridge, cfg, cfgVersion, configMark, configReadSince, localWriteStored, loadConfig, color, cssVar, rulesPaused, toggleRulesPause, fillIcon, fmtDur, fmtHM, fmtMem, gotoPageRef, gpuMem, gpusOf, h, en, haptic, icon, openSheet, paceInfo, pad, pairedPcs, quotaProviders, r1, shortDur, shortGpu, store, switchPc, t, tick, toast, transport, emo, labelled, rich, tp, tpv, quotaText, relayPath } from '../main.js';
 import { W } from '../registry.js';
 import { canKillAnywhere, dialEl, every } from './helpers.js';
 
@@ -87,7 +87,7 @@ W.obs = {
       haptic();
       busy = action + (scene || ''); render(true);
       try {
-        const r = await fetch(`${API}/obs/${action}` + (scene ? '?scene=' + encodeURIComponent(scene) : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+        const r = await fetch(`${API}${relayPath(`/obs/${action}`)}` + (scene ? '?scene=' + encodeURIComponent(scene) : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
         if (!r.ok) toast((await r.json().catch(() => ({}))).error || tp('OBS did not do it'), 'err');
       } catch (_) { toast(t('panel.pcNoAnswer'), 'err'); }
       setTimeout(async () => { await load(); busy = null; render(true); }, 600);
@@ -130,7 +130,7 @@ W.obs = {
 };
 
 // ---- Discord "side by side" layout ----------------------------------------------------------------------------
-const dcImg = (kind, id, hash) => `${API}/discord/img?kind=${kind}&id=${encodeURIComponent(id)}&hash=${encodeURIComponent(hash)}`;
+const dcImg = (kind, id, hash) => `${API}${relayPath(`/discord/img?kind=${kind}&id=${encodeURIComponent(id)}&hash=${encodeURIComponent(hash)}`)}`;
 // a round logo: the image once it has loaded, the first letter until then (and when there is no image)
 const dcIco = (src, name, cls) => {
   const w = h('span', cls, (name || '?').trim().charAt(0).toUpperCase() || '?');
@@ -155,7 +155,7 @@ const dcPost = async (path) => {
   const deadline = new Promise((_, fail) => { timer = setTimeout(() => { ctl.abort(); fail(new Error('timeout')); }, 8000); });
   try {
     await Promise.race([deadline, (async () => {
-      const r = await fetch(`${API}/discord/${path}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
+      const r = await fetch(`${API}${relayPath(`/discord/${path}`)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
       if (!r.ok) toast((await r.json().catch(() => ({}))).error || t('w.discord.failed'), 'err');
     })()]);
   } catch (_) { toast(t('panel.pcNoAnswer'), 'err'); } finally { clearTimeout(timer); }
@@ -171,7 +171,7 @@ const dcShareAct = async (action, pid) => {
   const deadline = new Promise((_, fail) => { timer = setTimeout(() => { ctl.abort(); fail(new Error('timeout')); }, 12000); });
   try {
     await Promise.race([deadline, (async () => {
-      const r = await fetch(`${API}/discord/share/${action}` + (pid ? '?pid=' + pid : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
+      const r = await fetch(`${API}${relayPath(`/discord/share/${action}`)}` + (pid ? '?pid=' + pid : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
       if (r.ok) return;
       const { code } = await r.json().catch(() => ({}));
       toast(t(DC_SHARE_ERRORS[code] || 'w.discord.failed'), 'err');
@@ -645,13 +645,13 @@ W.discord = {
       out.push(list);
       return out;
     };
-    const img = (kind, id, hash) => `${API}/discord/img?kind=${kind}&id=${encodeURIComponent(id)}&hash=${encodeURIComponent(hash)}`;
+    const img = (kind, id, hash) => `${API}${relayPath(`/discord/img?kind=${kind}&id=${encodeURIComponent(id)}&hash=${encodeURIComponent(hash)}`)}`;
     const act = async (action, channel) => {
       if (busy) return; // one press at a time: a double tap must not toggle twice
       haptic();
       busy = action + (channel || ''); render(true);
       try {
-        const r = await fetch(`${API}/discord/${action}` + (channel ? '?channel=' + encodeURIComponent(channel) : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+        const r = await fetch(`${API}${relayPath(`/discord/${action}`)}` + (channel ? '?channel=' + encodeURIComponent(channel) : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
         if (!r.ok) toast((await r.json().catch(() => ({}))).error || t('w.discord.failed'), 'err');
       } catch (_) { toast(t('panel.pcNoAnswer'), 'err'); }
       await new Promise((done) => setTimeout(done, 600));
@@ -678,7 +678,7 @@ W.discord = {
       const deadline = new Promise((_, fail) => { timer = setTimeout(() => { ctl.abort(); fail(new Error('timeout')); }, 12000); });
       try {
         await Promise.race([deadline, (async () => {
-          const r = await fetch(`${API}/discord/share/${action}` + (pid ? '?pid=' + pid : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
+          const r = await fetch(`${API}${relayPath(`/discord/share/${action}`)}` + (pid ? '?pid=' + pid : ''), { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
           if (r.ok) return;
           const { code } = await r.json().catch(() => ({}));
           toast(t(SHARE_ERRORS[code] || 'w.discord.failed'), 'err');
@@ -1354,7 +1354,7 @@ W.apps = {
       haptic();
       busy = a.id; render(true);
       try {
-        const r = await fetch(`${API}/apps/open?id=${encodeURIComponent(a.id)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+        const r = await fetch(`${API}${relayPath(`/apps/open?id=${encodeURIComponent(a.id)}`)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
         const j = await r.json().catch(() => ({}));
         if (r.ok) toast(`Opening ${a.name}`, 'ok'); else toast(j.error || `Could not open ${a.name}`, 'err');
       } catch (_) { toast(tp('The PC did not answer'), 'err'); }
@@ -1366,7 +1366,7 @@ W.apps = {
       img.loading = 'lazy';
       img.decoding = 'async';
       img.alt = '';
-      const src = `${API}/apps/icon?id=${encodeURIComponent(a.id)}`;
+      const src = `${API}${relayPath(`/apps/icon?id=${encodeURIComponent(a.id)}`)}`;
       img.src = src;
       // The first conversion of an icon can outlast the request on a busy computer; show the initial, try once more later.
       img.addEventListener('error', () => {

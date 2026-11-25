@@ -133,8 +133,64 @@ export let pushVersion = null;
 export const D = { state: null, quotas: null, work: null, procs: null, push: {}, weather: null, calendar: null, notes: store.get('notes', []) };
 
 export const HIST = 90;
-export const hist = { cpu: [], gpu: [], ram: [], vram: [], down: [], up: [], ping: [], gputemp: [], cputemp: [], hotspot: [], gpupower: [], gpuclock: [], cpupower: [] };
-export const pushHist = (k, v) => { const a = hist[k]; a.push(v ?? 0); if (a.length > HIST) a.shift(); };
+const HIST_KEYS = ['cpu', 'gpu', 'ram', 'vram', 'down', 'up', 'ping', 'gputemp', 'cputemp', 'hotspot', 'gpupower', 'gpuclock', 'cpupower'];
+const newHist = () => Object.fromEntries(HIST_KEYS.map((k) => [k, []]));
+const histBase = newHist(), histBySource = new Map();
+const histOf = (id) => { if (!id) return histBase; let h = histBySource.get(id); if (!h) histBySource.set(id, (h = newHist())); return h; };
+
+// ---------------------------------------------------------------- hub mode
+// Connected to a hub (an agent in hub mode, see Hub.cs), the state carries every computer's own (D.state.sources) and the
+// config names them (cfg.sources). Each widget shows one: its own "source" option, else its page's, else the first.
+// While a widget is built or updated, D.state is that computer's state and hist its history, so no widget needs to know;
+// its requests for computer data (RELAYED) go to that computer through the hub (/api/src/<id>/...).
+let curSource = null;
+let eventSource = null, eventSourceTimer = 0;
+export const hubSources = () => (Array.isArray(cfg.sources) ? cfg.sources : []);
+export const inHub = () => hubSources().length > 0;
+export const sourceOf = (ctx) => (inHub() ? ctx?.o?.source || ctx?.page?.source || hubSources()[0].id : null);
+export const sourceLive = (id) => (Array.isArray(D.state?.sources) ? D.state.sources.find((s) => s.id === id) : null);
+export const sourceOff = (id) => { const s = sourceLive(id); return !!s && !s.online; };
+const sourceStates = new Map();
+let sourceStatesOf = null;
+function stateOfSource(id) {
+  const s = D.state;
+  if (!s || !Array.isArray(s.sources)) return null;
+  if (sourceStatesOf !== s) { sourceStates.clear(); sourceStatesOf = s; }
+  if (!sourceStates.has(id)) {
+    const src = s.sources.find((x) => x.id === id);
+    // an off computer still replaces the hub's own data: its widgets show nothing rather than the hub's machine
+    sourceStates.set(id, src ? { ...s, pc: null, media: null, audio: null, ...(src.state || {}), source: src } : null);
+  }
+  return sourceStates.get(id);
+}
+/** Runs fn with D.state and hist being the widget's computer's. */
+function withSource(ctx, fn) {
+  const id = sourceOf(ctx);
+  if (!id) return fn();
+  const keep = D.state, keepSource = curSource;
+  const s = stateOfSource(id);
+  if (s) D.state = s;
+  curSource = id;
+  try { return fn(); } finally { D.state = keep; curSource = keepSource; }
+}
+/** A tap or an input in a widget aims the requests it makes at the widget's computer. */
+function trackSourceEvents(box, ctx) {
+  const id = sourceOf(ctx);
+  if (!id) return;
+  const mark = () => { eventSource = id; clearTimeout(eventSourceTimer); eventSourceTimer = setTimeout(() => { eventSource = null; }, 0); };
+  for (const type of ['pointerdown', 'pointerup', 'click', 'input', 'change', 'keydown']) box.addEventListener(type, mark, true);
+}
+const RELAYED = ['/media', '/volume', '/art', '/procs', '/quotas', '/work', '/controls', '/obs', '/discord', '/spectrum', '/lyrics',
+  '/apps', '/console', '/dictate', '/steam', '/batteries', '/approvals'];
+/** In hub mode, a path for computer data goes to the computer in play: the widget's, else the page's on screen, else the first. */
+export function relayPath(path) {
+  if (!inHub() || !RELAYED.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'))) return path;
+  const id = curSource || eventSource || pages[curPage]?.source || hubSources()[0].id;
+  return `/src/${encodeURIComponent(id)}${path}`;
+}
+
+export const hist = new Proxy(histBase, { get: (_, k) => histOf(curSource)[k] });
+export const pushHist = (k, v, h = histBase) => { const a = h[k]; a.push(v ?? 0); if (a.length > HIST) a.shift(); };
 
 // ---------------------------------------------------------------- helpers
 /** fetch() to the panel's local/USB feed proxy when the phone cannot reach an allowed public HTTPS feed directly. */
@@ -161,7 +217,7 @@ export async function api(path, method = 'GET', timeout = 2500) {
   const deadline = new Promise((_, fail) => setTimeout(() => fail(new Error('timeout')), timeout));
   try {
     const work = (async () => {
-      const r = await fetch(API + path, { method, signal: ctl.signal, cache: 'no-store', headers: PANEL_HEADERS });
+      const r = await fetch(API + relayPath(path), { method, signal: ctl.signal, cache: 'no-store', headers: PANEL_HEADERS });
       if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
       const ct = r.headers.get('content-type') || '';
       // Awaited on purpose: the timer is cleared in finally, so returning the promise unawaited let a response that
@@ -1073,7 +1129,7 @@ export function fillIcon(box, g) {
       box.style.background = 'transparent';
       box.appendChild(img);
     };
-    img.src = `${API}/procs/icon?name=${encodeURIComponent(g.name)}`;
+    img.src = `${API}${relayPath(`/procs/icon?name=${encodeURIComponent(g.name)}`)}`;
   }
 }
 
@@ -1160,7 +1216,7 @@ export function renderSheet() {
 }
 
 export async function postKill(query) {
-  const r = await fetch(`${API}/procs/kill?${query}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
+  const r = await fetch(`${API}${relayPath(`/procs/kill?${query}`)}`, { method: 'POST', cache: 'no-store', headers: PANEL_HEADERS });
   return { ok: r.ok, body: await r.json().catch(() => ({})) };
 }
 
@@ -1488,14 +1544,38 @@ export function portraitLayout(widgets) {
 // The page marked "show while the PC is off" (page.offline) is not one of the pages you swipe through: it is built into
 // its own layer (#away) and covers the panel once the computer has been unreachable for a while. In the settings
 // preview it stays an ordinary page, so it can be designed and seen like the others.
+// In hub mode a page can instead be marked for one computer (page.offlineSource): while that computer is off, it takes
+// the place of the pages that show that computer, among the pages you swipe through.
 export const AWAY = -2;
 export let awayPage = null;
 export let awayOn = false;
+let offSourcesKey = '';
+
+/** The computers that are off now, as a sorted list of ids (hub mode; empty otherwise). */
+function offSources() {
+  const list = Array.isArray(D.state?.sources) ? D.state.sources : [];
+  return list.filter((s) => !s.online).map((s) => s.id).sort();
+}
+
+/** The pages you swipe through: each page of a computer that is off becomes that computer's own PC-off page, if it has one. */
+function swipePages(all, off) {
+  const out = [];
+  for (const p of all) {
+    if (p.offline === true) continue;
+    const src = p.source || hubSources()[0]?.id;
+    const instead = src && off.includes(src) ? all.find((q) => q.offline === true && q.offlineSource === src) : null;
+    const page = instead || p;
+    if (!out.includes(page)) out.push(page);
+  }
+  return out;
+}
 
 export function buildLayout() {
   const all = (cfg.pages || []).filter((p) => p.enabled !== false && Array.isArray(p.widgets));
-  const away = PREVIEW ? null : all.find((p) => p.offline === true) || null;
-  const enabled = all.filter((p) => PREVIEW || p.offline !== true);
+  const away = PREVIEW ? null : all.find((p) => p.offline === true && !p.offlineSource) || null;
+  const off = PREVIEW ? [] : offSources();
+  offSourcesKey = off.join(',');
+  const enabled = PREVIEW ? all : swipePages(all, off);
   const next = enabled.length ? enabled : FALLBACK_PAGES;
   const portrait = isPortrait();
   const h12 = hour12();
@@ -1541,7 +1621,9 @@ function buildPage(p, pi, portrait) {
       grid.appendChild(box);
       const ctx = { page: p, w, o: w.options || {}, box, appearance };
       let inst;
-      try { inst = def.create(box, ctx) || {}; } catch (e) { box.replaceChildren(h('div', 'empty', `${w.type}: ${e.message}`)); inst = {}; }
+      try { inst = withSource(ctx, () => def.create(box, ctx)) || {}; } catch (e) { box.replaceChildren(h('div', 'empty', `${w.type}: ${e.message}`)); inst = {}; }
+      trackSourceEvents(box, ctx);
+      if (inHub()) box.dataset.off = t('s.js.pcOff');
       PhoneBoxAppearance.widget(box, appearance);
       mounted.push({ pi, def: inst.needs ? { ...def, needs: inst.needs, always: inst.always ?? def.always } : def, inst, ctx, dirty: true });
     }
@@ -1566,7 +1648,9 @@ export const pageOf = (kind) => mounted.filter((m) => m.pi === curPage && m.def.
 export const anyNeeds = (kind) => mounted.some((m) => m.def.needs.includes(kind));
 
 export function runUpdate(m, kind, background = false) {
-  try { m.inst.update?.(kind, background); } catch (e) { console.warn(m.ctx.w.type, e); }
+  try { withSource(m.ctx, () => m.inst.update?.(kind, background)); } catch (e) { console.warn(m.ctx.w.type, e); }
+  // the clock's time is the phone's own, and a PC-off page already says the computer is off
+  if (kind === 'state' && inHub()) m.ctx.box.classList.toggle('src-off', m.ctx.page?.offline !== true && m.ctx.w.type !== 'clock' && sourceOff(sourceOf(m.ctx)));
 }
 
 /** Delivers fresh data to the widgets on the visible pages; the others catch up when they come into view. */
@@ -2358,7 +2442,10 @@ function reconcileUnreachableNight(now = new Date()) {
   }
   const delayMin = Math.max(1, Math.min(30, +cfg.display?.unreachableNightDelayMin || 5));
   const unreachable = enabled && pcOff(delayMin);
-  setAway(unreachable && !!awayPage);
+  // hub mode: the hub answers, but none of its computers does
+  const allOff = !PREVIEW && !!awayPage && online !== false && Array.isArray(D.state?.sources)
+    && D.state.sources.length > 0 && D.state.sources.every((s) => !s.online);
+  setAway((unreachable || allOff) && !!awayPage);
   const dark = darkRoom && cfg.display?.nightWhenDark === true;
   setNight((isNight(now) || dark || (unreachable && !awayPage)) && Date.now() > wakeUntil);
 }
@@ -2680,6 +2767,25 @@ export function setOnline(on) {
   if (changed) emit('state');
 }
 
+function pushPcHist(s, h) {
+  const pc = s.pc;
+  if (!pc) return;
+  pushHist('cpu', pc.cpu, h);
+  pushHist('gpu', pc.gpu?.util, h);
+  pushHist('ram', pc.ramUsedGb, h);
+  const mem = gpuMem(pc.gpu);
+  pushHist('vram', mem ? (mem.used / mem.total) * 100 : 0, h);
+  pushHist('down', pc.netDownBps, h);
+  pushHist('up', pc.netUpBps, h);
+  pushHist('ping', s.ping?.ms, h);
+  pushHist('gputemp', pc.gpu?.temp, h);
+  pushHist('cputemp', pc.cpuTemp, h);
+  pushHist('hotspot', pc.gpu?.hotSpot, h);
+  pushHist('gpupower', pc.gpu?.power ?? pc.gpu?.powerPct, h);
+  pushHist('gpuclock', pc.gpu?.clock, h);
+  pushHist('cpupower', pc.cpuPower, h);
+}
+
 export function applyState(s, replayGen = null) {
   lastStateAt = Date.now();
   // compares the agent's wall clock across responses: if the PC's clock steps back (NTP), polled events are
@@ -2706,24 +2812,11 @@ export function applyState(s, replayGen = null) {
   if (ruleHold && Array.isArray(s.rules) && !s.rules.includes(ruleHold.rule) && Date.now() - ruleHold.at > 8000) requestBack(ruleHold.rule);
   rulesPaused = s.rulesPaused || null;
   if (!$('overview').hidden) renderRulesBtn();
-  {
-    const pc = s.pc;
-    if (pc) {
-      pushHist('cpu', pc.cpu);
-      pushHist('gpu', pc.gpu?.util);
-      pushHist('ram', pc.ramUsedGb);
-      const mem = gpuMem(pc.gpu);
-      pushHist('vram', mem ? (mem.used / mem.total) * 100 : 0);
-      pushHist('down', pc.netDownBps);
-      pushHist('up', pc.netUpBps);
-      pushHist('ping', s.ping?.ms);
-      pushHist('gputemp', pc.gpu?.temp);
-      pushHist('cputemp', pc.cpuTemp);
-      pushHist('hotspot', pc.gpu?.hotSpot);
-      pushHist('gpupower', pc.gpu?.power ?? pc.gpu?.powerPct);
-      pushHist('gpuclock', pc.gpu?.clock);
-      pushHist('cpupower', pc.cpuPower);
-    }
+  pushPcHist(s, histBase);
+  // hub mode: each computer keeps its own history, and a computer going off or coming back changes the pages
+  if (Array.isArray(s.sources)) {
+    for (const src of s.sources) if (src.online && src.state) pushPcHist(src.state, histOf(src.id));
+    if (offSources().join(',') !== offSourcesKey) buildLayout();
   }
   emit('state');
   return fresh || replayGen === evGen;

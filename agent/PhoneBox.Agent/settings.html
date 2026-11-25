@@ -918,6 +918,12 @@ nav a.on::before { color: var(--accent); }
         </div>
         <div class="row"><button class="btn primary" id="lanPair" data-i18n="s.wifi.pair">Pair a phone over Wi-Fi</button><button class="btn" id="lanRegen" data-i18n="s.wifi.newKey">New key (unpair phones)</button><span class="hint" id="lanStatus"></span></div>
       </div>
+      <div class="card" id="hubCard" hidden>
+        <h3 data-i18n="s.hub.title">Computers</h3>
+        <p class="hint" style="margin:0 0 12px" data-i18n="s.hub.lead">This agent runs as a hub: the phones show the computers added here. On each computer, open General › Wi-Fi &amp; Tailscale, choose Pair a phone over Wi-Fi, copy the pairing link and paste it below.</p>
+        <div id="hubList"></div>
+        <div class="row" style="margin-top:10px"><input type="text" id="hubLink" data-i18n-placeholder="s.hub.link" placeholder="Pairing link" spellcheck="false" autocomplete="off" style="flex:1"><button class="btn primary" id="hubAdd" data-i18n="s.hub.add">Add computer</button></div>
+      </div>
       <div class="card">
         <h3 data-i18n="s.updates.title">Updates</h3>
         <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="updates.auto"><span></span></label> <span data-i18n="s.updates.auto">Install new releases automatically</span></div>
@@ -1434,12 +1440,19 @@ function renderPageEditor() {
         // the page shown while the PC is off: only one at a time, and it leaves the pages you swipe through
         h('label', { class: 'check', title: t('s.js.pcOffHint') }, h('label', { class: 'switch' },
           h('input', { type: 'checkbox', checked: p.offline === true, onchange: (e) => {
-            for (const x of cfg.pages) if (x !== p) delete x.offline;
-            if (e.target.checked) { p.offline = true; p.enabled = true; } else delete p.offline;
+            // one such page for each case: every computer off, or (hub mode) one computer off
+            for (const x of cfg.pages) if (x !== p && (x.offlineSource || '') === (p.offlineSource || '')) delete x.offline;
+            if (e.target.checked) { p.offline = true; p.enabled = true; } else { delete p.offline; delete p.offlineSource; }
             changed(); renderPageEditor();
           } }), h('span')), t('s.js.pcOff')),
         h('button', { class: 'icon-btn', title: t('s.js.moveEarlier'), disabled: selPage === 0, onclick: () => move(-1) }, icon('chevron-up')),
         h('button', { class: 'icon-btn', title: t('s.js.moveLater'), disabled: selPage === cfg.pages.length - 1, onclick: () => move(1) }, icon('chevron-down'))),
+      // hub mode: the computer this page shows, or (a PC-off page) the computer whose going off shows it
+      ...(hubOn() ? [h('div', { class: 'row', style: { gap: '8px', marginTop: '10px' } }, p.offline
+        ? [t('s.hub.offlineWhen'), hubSelect(p, 'offlineSource', t('s.hub.allOff'), (s) => t('s.hub.isOff', { name: s.name }), () => {
+            for (const x of cfg.pages) if (x !== p && x.offline && (x.offlineSource || '') === (p.offlineSource || '')) delete x.offline;
+          })]
+        : [t('s.hub.source'), hubSelect(p, 'source', t('s.hub.first'))])] : []),
       h('div', { class: 'row', style: { gap: '6px', marginTop: '10px' } },
         h('button', { class: 'btn sm', onclick: () => openTemplates(selPage) }, t('s.js.replaceTpl')),
         h('button', { class: 'btn sm', onclick: () => { const c = JSON.parse(JSON.stringify(p)); c.id = ''; c.title += t('s.js.dupPageSuffix'); cfg.pages.splice(selPage + 1, 0, c); selPage++; renderPages(); changed(); } }, t('s.js.dupPage')),
@@ -1665,6 +1678,10 @@ function renderInspector() {
         } }, t('s.js.dup')),
         h('button', { class: 'btn sm danger', onclick: () => { p.widgets.splice(selWidget, 1); selWidget = -1; renderCanvas(); renderInspector(); changed(); } }, t('s.js.remove')))),
     h('p', { class: 'hint', style: { margin: '0 0 12px' } }, d.desc),
+    ...(hubOn() ? [(() => {
+      const o = w.options || {};
+      return h('div', { class: 'field' }, h('label', {}, t('s.hub.source')), hubSelect(o, 'source', t('s.hub.samePage'), undefined, () => { w.options = o; }));
+    })()] : []),
     ...d.options.filter((o) => optionShown(w, d, o)).flatMap((o) => [...(o.section ? [h('h4', { class: 'opt-section' }, o.section)] : []), optionField(w, o)]),
     appearanceEditor(w, () => [cfg.display?.appearance, p.appearance], t('s.js.widgetAppearance'), true),
     h('div', { class: 'row', style: { gap: '8px' } }, num('x', t('s.js.col'), 0, catalog.cols - 1), num('y', t('s.js.row'), 0, catalog.rows - 1),
@@ -3844,7 +3861,42 @@ async function load() {
   // baseline is taken after they ran: otherwise a freshly loaded page already counts as unsaved, and Revert can never
   // get back to a clean state
   saved = JSON.stringify(cfg);
-  changed(); loadInfo(); loadPhones();
+  changed(); loadInfo(); loadPhones(); loadHub();
+}
+
+// ---------------------------------------------------------------- hub mode: the computers this agent reads (Hub.cs)
+let hubInfo = { enabled: false, sources: [] };
+const hubOn = () => hubInfo.enabled && hubInfo.sources.length > 0;
+async function loadHub() {
+  try { hubInfo = await (await fetch('/api/hub')).json(); } catch (_) { hubInfo = { enabled: false, sources: [] }; }
+  $('hubCard').hidden = !hubInfo.enabled;
+  $('hubList').replaceChildren(...(hubInfo.sources.length ? hubInfo.sources.map((s) => h('div', { class: 'row', style: { gap: '8px', margin: '4px 0' } },
+    h('span', { style: { width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', background: s.online ? '#22c55e' : '#64748b' } }),
+    h('b', {}, s.name || s.id.slice(0, 8)),
+    h('span', { class: 'hint' }, `${s.online ? t('s.hub.on') : t('s.hub.off')} · ${s.hosts.join(', ')}`),
+    h('button', { class: 'btn sm danger', style: { marginLeft: 'auto' },
+      onclick: () => hubChange(() => fetch('/api/hub/sources/' + encodeURIComponent(s.id), { method: 'DELETE' })) }, t('s.js.remove'))))
+    : [h('p', { class: 'hint', style: { margin: 0 } }, t('s.hub.none'))]));
+  renderPageEditor();
+  renderInspector();
+}
+// adding or removing a computer saves the settings on the agent's side, so it waits for unsaved changes, then reloads
+async function hubChange(request) {
+  if (JSON.stringify(cfg) !== saved) { toast(t('s.js.saveFirst'), true); return; }
+  const r = await request();
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(body.error || 'HTTP ' + r.status, true); return; }
+  $('hubLink').value = '';
+  await load();
+}
+$('hubAdd').addEventListener('click', () => hubChange(() => fetch('/api/hub/sources', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link: $('hubLink').value.trim() }) })));
+/** A select of the hub's computers; '' (the first option, labelled first) deletes the key from obj. */
+function hubSelect(obj, key, first, label = (s) => s.name, onChange = () => {}) {
+  return h('select', { 'aria-label': t('s.hub.source'), onchange: (e) => {
+    if (e.target.value) obj[key] = e.target.value; else delete obj[key];
+    onChange(); changed();
+  } }, h('option', { value: '' }, first), ...hubInfo.sources.map((s) => h('option', { value: s.id, selected: obj[key] === s.id }, label(s))));
 }
 
 // one save at a time: pressing Save or Ctrl/Cmd+S again while it runs joins the save in flight, and the busy

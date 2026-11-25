@@ -102,13 +102,20 @@ object Settings { object Secure { const val ANDROID_ID = "android_id"; @JvmStati
 class Uri private constructor(val scheme: String?, val host: String?, val path: String?, val encodedFragment: String?, val encodedQuery: String?) {
     companion object { @JvmStatic fun decode(s: String): String = java.net.URLDecoder.decode(s, "UTF-8") }
 }
-class Network { fun bindSocket(socket: java.net.DatagramSocket) {} }
+class Network {
+    fun bindSocket(socket: java.net.DatagramSocket) {}
+    val socketFactory: javax.net.SocketFactory get() = javax.net.SocketFactory.getDefault()
+}
 class LinkAddress(val address: java.net.InetAddress)
 class LinkProperties { val linkAddresses: List<LinkAddress> = emptyList(); val interfaceName: String? = null }
 class ConnectivityManager {
     val allNetworks: Array<Network> = emptyArray()
     fun getLinkProperties(network: Network): LinkProperties? = null
 }
+""",
+    "SystemStubs.kt": """package android.system
+class ErrnoException(val functionName: String?, val errno: Int) : Exception()
+object OsConstants { @JvmStatic fun errnoName(errno: Int): String? = null }
 """,
     "WebkitStubs.kt": """package androidx.webkit
 object WebViewCompat { @JvmStatic fun getCurrentWebViewPackage(ctx: android.content.Context): android.content.pm.PackageInfo? = null }
@@ -130,6 +137,7 @@ class JSONArray(items: Collection<*> = emptyList<Any?>()) {
     override fun toString(): String = list.joinToString(",", "[", "]") { renderVal(it) }
 }
 class JSONObject(internal val map: MutableMap<String, Any?> = linkedMapOf()) {
+    companion object { @JvmField val NULL: Any = Any() }
     constructor(json: String) : this(parseObj(json))
     fun put(k: String, v: Any?): JSONObject { map[k] = v; return this }
     fun getString(k: String): String = map[k]?.toString() ?: throw RuntimeException("Missing $k")
@@ -402,8 +410,8 @@ def check_agent_link(compiler_cp: str, classpath: str, base_out: Path) -> None:
          "-storetype", "PKCS12", "-keystore", str(pfx), "-storepass", "changeit", "-keypass", "changeit"],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
     deskpanel = ROOT / "android/app/src/main/java/net/oxog/phonebox/deskpanel"
-    # WakePacket.kt holds what AgentLink's Wake-on-LAN code uses (packet, MAC parsing, LanLink)
-    src_files = [deskpanel / "AgentLink.kt", deskpanel / "WakePacket.kt"]
+    # WakePacket.kt holds what AgentLink's Wake-on-LAN code uses (packet, MAC parsing, LanLink); PcProbe.kt its computer check
+    src_files = [deskpanel / "AgentLink.kt", deskpanel / "WakePacket.kt", deskpanel / "PcProbe.kt"]
     for name, content in LINK_STUBS.items():
         path = src_dir / name
         path.write_text(content, encoding="utf-8")

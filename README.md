@@ -61,6 +61,11 @@ O setup baixa a versão mais recente, verifica o checksum, instala dependências
 
 Abra <http://127.0.0.1:8765>, escolha um template, arraste e redimensione widgets e salve.
 
+## Hub (vários PCs e celulares)
+
+Rode o agente num servidor da casa (Docker / Portainer) para que vários celulares mostrem dados de vários PCs, com uma
+página específica quando os PCs estão desligados. Veja [docker/README.md](docker/README.md).
+
 ## Plataformas
 
 | | Windows | Linux | macOS |

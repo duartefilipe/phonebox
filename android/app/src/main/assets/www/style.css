@@ -1406,6 +1406,10 @@ body.night #night { display: flex; }
 /* the page shown while the PC is off: above the panel and its offline badges, under the night screen and Wake button */
 #away { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 29; background: var(--bg, #000); display: none; }
 body.away #away { display: block; }
+/* hub mode: a widget whose computer is off, on a page with no PC-off page of its own */
+.w.src-off > * { opacity: .25; }
+.w.src-off::after { content: attr(data-off); position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600;
+  letter-spacing: .02em; color: var(--muted, #9aa4b2); pointer-events: none; }
 #away > .page { width: 100vw; height: 100vh; }
 body.away #offline { display: none; }
 body.away #wake { z-index: 30; }

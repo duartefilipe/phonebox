@@ -1,0 +1,5 @@
+**
+!agent/PhoneBox.Agent/**
+!android/app/src/main/assets/www/**
+agent/PhoneBox.Agent/bin/
+agent/PhoneBox.Agent/obj/

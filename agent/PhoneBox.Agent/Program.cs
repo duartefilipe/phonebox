@@ -32,6 +32,8 @@ var configDir = Path.GetDirectoryName(configPath) ?? AppPaths.ConfigDir;
 AppPaths.RestrictConfig(configPath);
 var configStore = new ConfigStore(configPath);
 configStore.PersistGenerated(); // keep the Wi-Fi token stable across restarts
+HubMode.Init(args, Environment.GetEnvironmentVariable);
+if (HubMode.Enabled) configStore.EnableLan(); // a hub's phones only connect over Wi-Fi
 var lanCfg = configStore.Get().Lan;
 var lanCert = lanCfg.Enabled && lanCfg.Port != Port ? Lan.Certificate(configDir) : null;
 // USB uses the same certificate as Wi-Fi; the agent hands its fingerprint to the app over adb (see UsbLink.cs)
@@ -53,6 +55,9 @@ builder.WebHost.ConfigureKestrel(k =>
     k.Listen(IPAddress.Loopback, usb.Port, l => l.UseHttps(usbCert));
     // Wi-Fi / Tailscale: HTTPS with a pinned self-signed certificate, token required (see Lan.cs).
     if (lanCert is not null) k.Listen(IPAddress.Any, lanCfg.Port, l => l.UseHttps(lanCert));
+    // hub mode: the settings page from the network, over the same TLS certificate, behind the password (HubAdmin)
+    if (HubMode.AdminActive && lanCert is not null && HubMode.AdminPort != lanCfg.Port && HubMode.AdminPort != Port)
+        k.Listen(IPAddress.Any, HubMode.AdminPort, l => l.UseHttps(lanCert));
 });
 builder.Logging.ClearProviders();
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
@@ -108,8 +113,14 @@ AddMonitor<ChargeGuard>(builder.Services);
 // the phone's microphone into a virtual cable (off by default)
 AddMonitor<PhoneMic>(builder.Services);
 builder.Services.AddHostedService<Tray>();
+builder.Services.AddSingleton(_ => new HubAdmin());
+AddMonitor<HubSources>(builder.Services);
 
 var app = builder.Build();
+if (HubMode.Enabled && !HubMode.AdminActive)
+    app.Logger.LogWarning("hub mode without PHONEBOX_PASSWORD: the settings page is only on 127.0.0.1:{Port}", Port);
+var adminPort = HubMode.AdminActive && lanCert is not null ? HubMode.AdminPort : -1;
+var hubAdmin = app.Services.GetRequiredService<HubAdmin>();
 {
     // the phone acts on it through a shortcut command and reads it in /api/state (see PhoneDevices)
     PhoneDevices.Mic = app.Services.GetRequiredService<PhoneMic>();
@@ -205,7 +216,7 @@ app.MapPost("/api/controls/radio-directory/check", async (HttpRequest req, Cance
 // path the phone uses; on the local port that is simply /api/... Routing runs after this, so it sees the new path.
 app.Use((ctx, next) =>
 {
-    if (ctx.Connection.LocalPort == Port && ctx.Request.Path.StartsWithSegments("/agent/api", out var rest))
+    if ((ctx.Connection.LocalPort == Port || ctx.Connection.LocalPort == adminPort) && ctx.Request.Path.StartsWithSegments("/agent/api", out var rest))
         ctx.Request.Path = "/api" + rest;
     return next(ctx);
 });
@@ -275,6 +286,24 @@ app.Use(async (ctx, next) =>
             return;
         }
     }
+    else if (ctx.Connection.LocalPort == adminPort && ctx.Request.IsHttps)
+    {
+        // the hub's settings page from the network: the password's session cookie, and no request from another site
+        ctx.Response.Headers.CacheControl = "no-store";
+        if (ctx.Request.Path == "/hub/login") { await next(); return; }
+        if (!hubAdmin.Valid(ctx.Request.Cookies[HubAdmin.Cookie]))
+        {
+            if (ctx.Request.Method == "GET" && !ctx.Request.Path.StartsWithSegments("/api")) ctx.Response.Redirect("/hub/login");
+            else ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        if ((origin != "" && origin != $"https://{ctx.Request.Host}")
+            || BrowserGuard.IsForeign(ctx.Request.Headers["Sec-Fetch-Site"], ctx.Request.Headers["Sec-Fetch-Mode"], ctx.Request.Method, ctx.Request.Path))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+    }
     else
     {
         var host = ctx.Request.Host.Host;
@@ -327,6 +356,44 @@ app.MapGet("/api/pair", (ConfigStore cfg) =>
 
 // The MAC addresses of this computer's LAN adapters: the phone keeps them to wake this PC while the agent is not running.
 app.MapGet("/api/wake/macs", () => Results.Json(new { macs = WakeOnLan.LocalMacs() }));
+
+// ---------------------------------------------------------------- hub mode (see Hub.cs)
+app.MapGet("/hub/login", () => Results.Content(HubAdmin.LoginPage(false), "text/html; charset=utf-8"));
+app.MapPost("/hub/login", async (HttpContext ctx) =>
+{
+    if (ctx.Request.ContentLength is > 4096 || !ctx.Request.HasFormContentType) return Results.StatusCode(StatusCodes.Status400BadRequest);
+    var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+    if (hubAdmin.Login(form["password"].ToString(), HubMode.Password) is not { } session)
+    {
+        app.Logger.LogWarning("hub: a wrong password from {Ip}", ctx.Connection.RemoteIpAddress);
+        return Results.Content(HubAdmin.LoginPage(true), "text/html; charset=utf-8", statusCode: StatusCodes.Status401Unauthorized);
+    }
+    ctx.Response.Cookies.Append(HubAdmin.Cookie, session, new CookieOptions
+    {
+        HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Path = "/", MaxAge = TimeSpan.FromMilliseconds(HubAdmin.SessionMs),
+    });
+    return Results.Redirect("/");
+});
+app.MapPost("/hub/logout", (HttpContext ctx) =>
+{
+    hubAdmin.Logout(ctx.Request.Cookies[HubAdmin.Cookie]);
+    ctx.Response.Cookies.Delete(HubAdmin.Cookie);
+    return Results.Ok();
+});
+app.MapGet("/api/hub", (HubSources hub) => Results.Json(new { enabled = HubMode.Enabled, sources = hub.Summary() }));
+app.MapPost("/api/hub/sources", async (HttpRequest req, HubSources hub, CancellationToken ct) =>
+{
+    if (!HubMode.Enabled) return Results.NotFound();
+    var body = await req.ReadFromJsonAsync<HubAddRequest>(ct);
+    return await hub.AddAsync(body?.Link, ct) is { } error ? Results.BadRequest(new { error }) : Results.Ok(new { ok = true });
+});
+app.MapDelete("/api/hub/sources/{id}", (string id, HubSources hub) =>
+    hub.Remove(id) is { } error ? Results.BadRequest(new { error }) : Results.Ok(new { ok = true }));
+app.Map("/api/src/{id}/{**rest}", async (HttpContext ctx, string id, string? rest, HubSources hub) =>
+{
+    if (!HubMode.Enabled || string.IsNullOrEmpty(rest)) { ctx.Response.StatusCode = StatusCodes.Status404NotFound; return; }
+    await hub.ForwardAsync(ctx, id, rest);
+});
 
 // Pairing without USB (see PairingCodes). Start and cancel are local only (settings page); the phone claims over Wi-Fi.
 app.MapPost("/api/pair/start", (ConfigStore cfg, PairingCodes codes) =>
@@ -628,6 +695,8 @@ object State(IServiceProvider sp, long? ev)
         cycles = Shortcuts.CycleStates(sp.GetRequiredService<ConfigStore>().Get()),
         phoneMic = sp.GetRequiredService<PhoneMic>().PhoneState(),
         power = PowerSignal.Current,
+        // hub mode: each computer's own state, and whether it answers
+        sources = HubMode.Enabled ? sp.GetRequiredService<HubSources>().StateList() : null,
     };
 }
 
@@ -1212,6 +1281,9 @@ static void AddMonitor<T>(IServiceCollection s) where T : class, IHostedService
 
 /// <summary>Body of POST /api/pair/claim.</summary>
 internal sealed record PairClaim(string? Code);
+
+/// <summary>Body of POST /api/hub/sources: a computer's pairing link.</summary>
+internal sealed record HubAddRequest(string? Link);
 
 public partial class Program
 {

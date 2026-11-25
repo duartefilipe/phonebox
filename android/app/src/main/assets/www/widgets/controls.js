@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, api, applyState, bridge, buzz, D, evSeq, h, en, haptic, icon, toast, store, t, tp, tpv } from '../main.js';
+import { API, PANEL_HEADERS, api, applyState, bridge, buzz, D, evSeq, h, en, haptic, icon, toast, store, t, tp, tpv, relayPath } from '../main.js';
 import { W } from '../registry.js';
 
 let cached = null, at = 0, epoch = 0, pending = null;
@@ -500,7 +500,7 @@ function radioView(box, options) {
       if (entry.logoKey !== nextKey) {
         entry.logoKey = nextKey;
         entry.logoBox.classList.remove('has-logo');
-        entry.img.src = `${API}/controls/radio-logo?id=${encodeURIComponent(id)}&v=${encodeURIComponent(rev)}`;
+        entry.img.src = `${API}${relayPath(`/controls/radio-logo?id=${encodeURIComponent(id)}&v=${encodeURIComponent(rev)}`)}`;
       }
     }
     for (const id of [...cards.keys()]) {
@@ -549,7 +549,7 @@ function listening(box) {
     check = setInterval(() => { const r = box.getBoundingClientRect(); if (document.hidden || r.right <= 0 || r.left >= innerWidth) stop(); }, 250);
     (async () => {
       try {
-        const response = await fetch(API + '/controls/listen', { headers: PANEL_HEADERS, signal: own.signal });
+        const response = await fetch(API + relayPath('/controls/listen'), { headers: PANEL_HEADERS, signal: own.signal });
         if (!response.ok || !response.body) throw new Error('Listening is unavailable');
         const reader = response.body.getReader(), decoder = new TextDecoder(); let text = '';
         while (ctl === own) {
