@@ -40,13 +40,13 @@ Você precisa de um **celular Android 5+** e um computador compatível.
 **Windows 10/11 x64** — cole em um terminal PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.ps1 | iex
 ```
 
 **Linux ou macOS:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ersinkoc/phonebox/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/duartefilipe/phonebox/main/setup.sh | bash
 ```
 
 O setup baixa a versão mais recente, verifica o checksum, instala dependências e abre as configurações em <http://127.0.0.1:8765>.
@@ -55,7 +55,7 @@ O setup baixa a versão mais recente, verifica o checksum, instala dependências
 
 **USB:** ative as opções de desenvolvedor → Depuração USB, conecte o cabo e aceite o prompt de autorização.
 
-**Wi-Fi:** instale o APK do [último release](https://github.com/ersinkoc/phonebox/releases/latest), abra as configurações (`http://127.0.0.1:8765`), ative **Wi-Fi** em General, salve e reinicie. Depois escaneie o QR code de pareamento.
+**Wi-Fi:** instale o APK do [último release](https://github.com/duartefilipe/phonebox/releases/latest), abra as configurações (`http://127.0.0.1:8765`), ative **Wi-Fi** em General, salve e reinicie. Depois escaneie o QR code de pareamento.
 
 ### 3. Personalizar
 
