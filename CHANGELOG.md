@@ -7,6 +7,10 @@
   inside its own window, so with Discord minimized, behind other windows or in the tray the button seemed to do
   nothing. With more than one Discord build running (stable, PTB, Canary), the one PhoneBox is connected to comes
   forward, since that is where the picker opens (#539, #543).
+- Discord: a **current channel** bar widget, any size from 2 × 1 up to a full row: the voice channel you are in, who is
+  there, mute, deafen and leave, and Screen / Chat that open those tabs of the Discord widget. Outside a voice channel
+  it hides and the widgets next to it take its place. Its own **Control** allows only mute, deafen, leave and stopping
+  a screen share; starting one, the app list and the chat stay with the Discord widget (#540).
 - Discord: a **Side by side** layout, as an option next to the list (the default), for tablets and large widgets. The
   left side shows the voice channel you are in with who is there, mute, deafen and leave; the right side has tabs for
   the chosen server's voice channels as big keys, the chat and the screen share. A server switcher keeps the servers
@@ -28,6 +32,13 @@
 - Synced lyrics: a music video from the VEVO channel of an artist with a name of more than one word ("Tan Bionica -
   Song" from `TanBionicaVEVO`) finds its lyrics. The channel name drops the spaces, so the title was not split into
   artist and song (#551).
+- Shortcuts: an **Icon size** per shortcut (Settings › Shortcuts): Default, Medium, Large or Maximum, where the icon
+  fills the key. It applies to an emoji and an uploaded picture, on any key (Shortcut grid, Big button, cycle keys); a
+  program's own icon keeps its size (#542).
+- AI quotas and Sessions: **Grok**. The quotas card shows the current credit window, the plan, the product split and a
+  prepaid balance, read with the Grok CLI's own sign-in (`grok login`), which PhoneBox never refreshes, logs or sends
+  to the phone. It asks only while an enabled page shows Grok. The Sessions card lists Grok CLI sessions from
+  `~/.grok/sessions` (project, status, model, effort and token counts; the chat stays on the computer) (#548).
 - Synced lyrics: **Timing offset per player**, one `Name=ms` per line with the player's name as Now playing shows it
   (for example `Apple Music=1000`), for a player whose position runs behind the sound while others don't. On Windows,
   Apple Music now shows as "Apple Music" instead of "AppleInc" (#557).
@@ -81,6 +92,11 @@
   the adb server, phones that already had their rule get it back without being woken (#486).
 
 **Panel**
+- Page bar: with many pages on a narrow phone, only the current page keeps its name, so the others are not cut to one
+  letter. It happens only when a name would be cut, so tablets, monitors and the side bar keep every name (#553).
+- Settings › Display › **More rows on a tablet**, off by default: a landscape tablet keeps the 12 columns and adds
+  rows (about 8 to 10, from its screen), so a page holds more widgets. Widgets below the top 6 rows stay off a phone.
+  In **Pages**, the layout editor shows Phone, Tablet and Wide tablet (#546).
 - Traditional Chinese: 160 panel and widget labels that were machine-translated now read right, for example
   功耗 (power), 時脈 (clock speed), 溫度 (temperature) and 錄影 / 直播 (OBS recording / stream). Units such as MHz,
   rpm and W stay as they are (#549).
@@ -103,6 +119,9 @@
   a wallpaper is set (#468, #471).
 
 **Android app**
+- Pairing without a cable: when the browser can't hand the pairing link to the app, the pairing page now says what to
+  do (install the app first, or try the camera, Chrome or USB) instead of opening the download page as if pairing had
+  worked (#175, #552).
 - The app keeps its connections to the computer open and reuses them, instead of opening a new encrypted connection
   for every request. On Android 6 each one held system resources until the app was stopped, which may be behind the
   crashes after some idle time in #389 (#508).
@@ -391,7 +410,7 @@ selection fit side by side, device batteries refresh faster, and a phone that is
   computer. **Update the agent and the phone app together**: an older app can't use USB with this agent, and the
   settings page offers its update. If an app you don't trust was ever on the panel phone, pair Wi-Fi again and make a
   new webhook key, and renew the Home Assistant, Discord and other tokens in the settings
-  ([GHSA-j6qc-pm3p-fhg7](https://github.com/ersinkoc/phonebox/security/advisories/GHSA-j6qc-pm3p-fhg7)).
+  ().
 
 **Widgets**
 - Audio mixers on Windows: one control per app instead of one per Windows audio session. An app that plays on two
@@ -1176,18 +1195,18 @@ recorded proof.
 
 ## 0.9.3 — 2026-11-11
 
-- Support Podman for the containers widget ([#12](https://github.com/ersinkoc/phonebox/pull/12)). Parse Podman's JSON
+- Support Podman for the containers widget (). Parse Podman's JSON
   array and NDJSON container/stats output (`Id`, `Names` arrays, object labels, numeric CPU/memory), hide pod infra
   containers, and fall back between `docker` and `podman` when one is unavailable. The first request no longer reports
   "Docker is not running" before the cache is filled, and start/stop/restart waits for an in-flight poll so the panel
   shows the new state.
 - Match Activity Monitor's "Memory Used" on macOS: app memory (anonymous minus purgeable) plus wired and compressed
-  pages ([#11](https://github.com/ersinkoc/phonebox/pull/11)).
+  pages ().
 - Hide CodexBar's own `claude` usage probe from the sessions widget, matching only its exact
   `CodexBar/ClaudeProbe` directory so real projects with similar names stay visible
-  ([#13](https://github.com/ersinkoc/phonebox/pull/13)).
+  ().
 - Swipe past the last page to wrap to the first, and past the first to wrap to the last
-  ([#14](https://github.com/ersinkoc/phonebox/pull/14)). The jump is instant, and drags that start on sliders,
+  (). The jump is instant, and drags that start on sliders,
   buttons, the volume bar or lists never flip pages.
 
 ## 0.9.2 — 2026-11-10
@@ -1200,10 +1219,10 @@ recorded proof.
 
 ## 0.9.1 — 2026-11-10
 
-- Fix stale Windows media cover art after switching YouTube/Chromium tracks ([#9](https://github.com/ersinkoc/phonebox/issues/9)).
+- Fix stale Windows media cover art after switching YouTube/Chromium tracks ().
   Refresh delayed thumbnails and media-property changes, periodically recheck missed updates, and keep the artwork ID
   stable when the image is unchanged. Clear artwork when the media session closes.
-- Recover the four affected default icons from known ANSI/UTF-8 double-encoded forms ([#10](https://github.com/ersinkoc/phonebox/issues/10)).
+- Recover the four affected default icons from known ANSI/UTF-8 double-encoded forms ().
   Repair only page/shortcut icon fields, preserve the original configuration in the normal backup, and escape saved
   icon values so ANSI-based editors cannot corrupt them. Other user text and commands remain unchanged.
 
@@ -1236,8 +1255,7 @@ recorded proof.
 
 ## 0.7.3 — 2026-11-10
 
-- Fix the launch crash on Android 9 and 10 (API 28–29), reported in
-  [issue #8](https://github.com/ersinkoc/phonebox/issues/8).
+- Fix the launch crash on Android 9 and 10 (API 28–29), reported in.
   Full-screen mode now uses legacy immersive sticky flags on these versions; Android 11+ retains the window-insets path.
 - Run full Android debug lint in CI and classify `NewApi` findings as fatal, so unsupported framework calls block
   both CI and release APK builds. Before the fix, lint reproduced all five unguarded API-30 calls in `hideSystemUi`.
@@ -1246,7 +1264,7 @@ recorded proof.
 
 Native Antigravity quotas on Windows, Linux and macOS. Existing layouts and pairing settings are retained.
 
-- Add native Antigravity quota and plan monitoring, adapted from [PR #7](https://github.com/ersinkoc/phonebox/pull/7). Support flat and nested measured quota fractions; skip unknown
+- Add native Antigravity quota and plan monitoring, adapted from. Support flat and nested measured quota fractions; skip unknown
   or invalid values instead of showing unused quota. Preserve measured zero/full usage.
 - Discover legacy Windows/Linux language-server names and extension-server ports with the matching CSRF token.
   Reject unrelated editor processes, try other candidates after a failed probe, bound local requests and macOS
@@ -1301,7 +1319,7 @@ preserved. Add the new widgets or the CodexBar template from the editor when you
 - Opt-in macOS lock sync over ADB. Commands have deadlines, unsuccessful devices are retried, and setup and polling
   share a serialized state reconciler. Secure phone keyguards still require a manual unlock.
 
-Contributions adapted from [PR #1](https://github.com/ersinkoc/phonebox/pull/1) and [PR #2](https://github.com/ersinkoc/phonebox/pull/2), preserving the 0.6.9 fixes.
+Contributions adapted from and, preserving the 0.6.9 fixes.
 
 Validated on Windows and an Apple M4 MacBook Air: 175 agent tests per platform, 29 browser tests, signed Android
 update with application data preserved, real USB lock/wake, media metadata/artwork and pause/resume, audio control,

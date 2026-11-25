@@ -45,7 +45,7 @@ Every page is a 12 × 6 grid. Start a page from one of the 30 templates (or from
 |---|---|
 | **Home** — clock, weather, now playing, CPU / GPU / RAM / network tiles | **Dashboard** — gauges, clock, media and a few shortcut keys |
 | <img src="screenshots/home.png" alt="Home"> | <img src="screenshots/dashboard.png" alt="Dashboard"> |
-| **AI quotas** — Claude and Codex limits, reset times, "at this pace: full in 1 d 5 h" | **Sessions** — Claude Code / Codex / Cursor / OpenCode / Antigravity sessions and GitHub |
+| **AI quotas** — Claude, Codex and Grok limits, reset times, "at this pace: full in 1 d 5 h" | **Sessions** — Claude Code / Codex / Grok / Cursor / OpenCode / Antigravity sessions and GitHub |
 | <img src="screenshots/ai.png" alt="AI quotas"> | <img src="screenshots/work.png" alt="Sessions"> |
 | **System** — CPU, GPU, memory, disks, network and ping charts | **Processes** — heaviest apps; tap one to end an instance or all of them |
 | <img src="screenshots/system.png" alt="System"> | <img src="screenshots/procs-sheet.png" alt="Processes"> |
@@ -148,7 +148,7 @@ on a page rather than inside a stack.
 **CodexBar** is an optional source: install its `codexbar` CLI on the computer and the agent reads `usage --json`.
 The CodexBar template and quota widget can show every provider reported by the CLI, with configurable provider rotation.
 An optional cost overview shows the last 30 days of spend and tokens; it is off by default.
-Local Claude, Codex and Antigravity sources keep refreshing when CodexBar is absent, fails, or reports stale data. General settings
+Local Claude, Codex, Antigravity and Grok sources keep refreshing when CodexBar is absent, fails, or reports stale data. General settings
 provide defaults; a widget's own options override them, including an empty provider selection.
 Install a compatible CLI from [CodexBar](https://github.com/steipete/CodexBar) if available for your system.
 PhoneBox uses native local sources when no compatible CLI is installed.
@@ -156,6 +156,12 @@ PhoneBox uses native local sources when no compatible CLI is installed.
 **Claude quotas** need the sign-in of the Claude Code command-line tool (run `claude` and sign in). The Claude Desktop
 app keeps its own sign-in to itself, so with only the desktop app the widget shows the plan and says so; its sessions
 still show up in the Sessions widget.
+
+**Grok quotas** need the Grok CLI sign-in (`grok login`). PhoneBox reads the token in `~/.grok/auth.json`
+(`GROK_HOME` overrides that folder) and asks `cli-chat-proxy.grok.com` for the credit window, only while an enabled
+page shows Grok quotas (a Quotas, CodexBar or Quota ring widget, or a Clock status line, that includes Grok). It does
+not refresh the token, start `grok`, or send the token to the phone. The bar is the weekly or monthly included credits. A prepaid
+balance is shown in dollars only when the reply includes one. The included credits stay a percentage.
 
 **Codex live quotas** are off by default (normally PhoneBox reads Codex's local session logs without running `codex`).
 Turn on **Read live Codex quotas with the Codex CLI** in **Settings › General › AI quotas & CodexBar** to query
@@ -291,8 +297,13 @@ installed with. A shorter time applies to the phone card at once; for a longer o
 again, or the hook gives up before the phone does. To have a reinstalled Cursor hook cover WSL as well, turn on **Also
 watch Cursor in WSL** and start the distro first: with the option off, *Install hook* writes only the Windows hook.
 
+With other Claude Code accounts set up (the folders under **Other Claude Code accounts**), *Install hook* and *Remove
+hook* also write the `settings.json` of each of those folders that exists, with the same backup. The settings list
+those files under the button before you press it, and a folder that doesn't exist is skipped, never created. Remove
+the hook before you delete an account: *Remove hook* only reaches the folders still in the list.
+
 WorkBuddy speaks the same hook protocol. Add the same `PermissionRequest` entry to `~/.workbuddy/settings.json` by
-hand: *Install hook* writes to `~/.claude/settings.json` only. WorkBuddy keeps its sessions in `~/.workbuddy`, so the
+hand: *Install hook* writes only to Claude Code's own folders (`~/.claude` and the other accounts'). WorkBuddy keeps its sessions in `~/.workbuddy`, so the
 card takes the project name from the workspace name WorkBuddy stores
 (`~/.workbuddy/workspace-display-names.json`) instead of the folder name.
 
@@ -453,7 +464,9 @@ switchable ports). The panel keeps running over Wi-Fi while the USB power is off
   default), PhoneBox also queries `codex app-server` about every 3 minutes (backing off on failures) while an enabled
   page shows Codex quotas and fresh CodexBar data is not already winning; no coding session or inference prompt is
   required, and local session quota stays as fallback. Claude Code sessions come from
-  `~/.claude/sessions`. OpenCode sessions (opt-in, off by default) come from its background service's local HTTP API —
+  `~/.claude/sessions`. Grok sessions come from local files under `~/.grok/sessions` (or `GROK_HOME`): the project
+  folder, status, model, reasoning effort and token counters. The chat, its title and the cost stay on this computer.
+  OpenCode sessions (opt-in, off by default) come from its background service's local HTTP API —
   the native one and each running WSL distro's — with the password OpenCode wrote to `~/.local/state/opencode/service.json`;
   only the session's folder, title, model, token counters, times and outcome are read, never prompts, replies or tool
   arguments. Cursor sessions (opt-in in **Settings › General › Cursor sessions**) come from recent agent transcripts

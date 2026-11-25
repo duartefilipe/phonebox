@@ -103,7 +103,7 @@ public sealed class AgentConfig
         shortcuts = Shortcuts.Select(s =>
         {
             var pic = shortcutIcon?.Invoke(s);
-            return new { s.Id, s.Label, s.Icon, s.Color, toggle = s.Toggle || s.Cmd is "builtin:mute" or PhoneDevices.MicCmd, hold = s.LongPress is not null, cycle = s.Cmd == "builtin:cycle" && s.Cycle is { Count: > 0 }, iconRev = pic?.Rev, iconUpload = pic?.Upload == true };
+            return new { s.Id, s.Label, s.Icon, s.Color, iconSize = s.IconSize, toggle = s.Toggle || s.Cmd is "builtin:mute" or PhoneDevices.MicCmd, hold = s.LongPress is not null, cycle = s.Cmd == "builtin:cycle" && s.Cycle is { Count: > 0 }, iconRev = pic?.Rev, iconUpload = pic?.Upload == true };
         }),
         // names only (for the Rules widget); what a rule matches on stays here
         rules = Rules.Select(r => new { r.Id, r.Name, r.Enabled, r.When }),
@@ -129,6 +129,19 @@ public sealed class AgentConfig
     /// <summary>True when an enabled page (including enabled Smart Stack children) shows a quota or CodexBar widget that includes Codex.</summary>
     public bool ShowCodexQuota() => Widgets(enabledPagesOnly: true)
         .Any(w => w.Type is "codexbar" or "quotas" && WidgetIncludesProvider(w, "codex"));
+
+    /// <summary>
+    /// True when an enabled page (including enabled Smart Stack children) shows Grok quotas: a Quotas or CodexBar
+    /// widget, or a Clock with its status line, whose providers include Grok, or a Quota ring set to Grok.
+    /// </summary>
+    public bool ShowGrokQuota() => Widgets(enabledPagesOnly: true)
+        .Any(w => w.Type switch
+        {
+            "codexbar" or "quotas" => WidgetIncludesProvider(w, "grok"),
+            "clock" => w.Bool("status") != false && WidgetIncludesProvider(w, "grok"),
+            "quotaring" => w.Str("provider") == "grok",
+            _ => false,
+        });
 
     private bool WidgetIncludesProvider(WidgetConfig w, string id)
     {
@@ -215,6 +228,11 @@ public sealed class DisplayConfig
     public bool VolumeKeys { get; set; } = true;
     /// <summary>landscape, portrait or auto (follow the phone). In portrait the widgets are arranged automatically.</summary>
     public string Orientation { get; set; } = "landscape";
+    /// <summary>
+    /// A landscape tablet gets more rows (12 × 8 to 12 × 10, from its shape) and an upright one packs 12 columns, so a
+    /// page holds more widgets. Off by default: turning it on changes how an arranged tablet looks.
+    /// </summary>
+    public bool TabletRows { get; set; }
     /// <summary>default, amoled, midnight, warm or graphite.</summary>
     public string Theme { get; set; } = "default";
     /// <summary>Accent colour (background glow, page dots), e.g. "#2dd4bf".</summary>
@@ -306,6 +324,34 @@ public sealed class ClaudeConfig
     /// <summary>Windows: also show the Claude Code sessions (and use the sign-in for the quota, when Windows has none)
     /// of the running WSL distros' default users. A stopped distro is never started for it (off by default).</summary>
     public bool WatchWsl { get; set; }
+    /// <summary>Other Claude Code config folders (CLAUDE_CONFIG_DIR) whose sign-ins get a quota card each, next to
+    /// ~/.claude. Read only, like the default one. Paths stay on this computer; the phone only sees the labels.</summary>
+    public ClaudeCredentialDir[] ExtraCredentialDirs { get; set; } = [];
+}
+
+public sealed class ClaudeCredentialDir
+{
+    /// <summary>Longest label kept: it is part of the card id (claude@label) that widgets are set to.</summary>
+    public const int MaxLabel = 20;
+    public string Label { get; set; } = "";
+    public string Dir { get; set; } = "";
+    /// <summary>The folder with a leading ~ turned into the home folder.</summary>
+    public string FullPath() => Dir.StartsWith('~') ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + Dir[1..] : Dir;
+    /// <summary>One identity for the folder however it is spelled: the full path without a trailing separator, case
+    /// folded on Windows and macOS (their volumes are case-insensitive by default), kept on Linux. Its reader, schedule and cache follow it.</summary>
+    public string Key() => KeyOf(FullPath());
+    /// <summary><see cref="Key"/>, or null for a path that can't be made full (a NUL, too long): that entry is dropped.</summary>
+    public string? TryKey()
+    {
+        try { return Key(); }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException) { return null; }
+    }
+    internal static string KeyOf(string path)
+    {
+        var p = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        // shortcut: a case-sensitive macOS volume can't hold two accounts whose folders differ only in case; probe the volume if anyone needs that
+        return OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? p.ToLowerInvariant() : p;
+    }
 }
 
 public sealed class CursorConfig
@@ -366,7 +412,7 @@ public sealed class PageConfig
     public string? Source { get; set; }
     /// <summary>Return home after this many idle seconds on this page; null = the display setting, 0 = stay.</summary>
     public int? IdleSec { get; set; }
-    /// <summary>Widgets on a 12 x 6 grid.</summary>
+    /// <summary>Widgets on a 12-column grid: 6 rows on a phone, more on a tablet (up to <see cref="Catalog.MaxRows"/>).</summary>
     public List<WidgetConfig>? Widgets { get; set; }
 
     /// <summary>Create the page from this template (templates.json) when it has no widgets yet.</summary>
@@ -557,6 +603,10 @@ public sealed class Shortcut
     [JsonConverter(typeof(IconJsonConverter))]
     public string Icon { get; set; } = "";
     public string Color { get; set; } = "#6b7280";
+    /// <summary>How big the icon (emoji or picture) is on the phone's key: empty = default, "m", "l" or "max" (fills the key).</summary>
+    [JsonConverter(typeof(IconSizeJsonConverter))]
+    public string? IconSize { get; set; }
+    public static readonly string[] IconSizes = ["m", "l", "max"];
     /// <summary>A program, address or file; or builtin:lock / monitor-off / mute / keys / text / macro, or the phone
     /// mic command (builtin:phone-mic, see PhoneDevices).</summary>
     public string Cmd { get; set; } = "";
@@ -742,7 +792,8 @@ public sealed partial class ConfigStore(string path)
         c.Weather.Unit = WeatherUnitJsonConverter.Normalize(c.Weather.Unit);
         c.Weather.Model = WeatherModelJsonConverter.Normalize(c.Weather.Model);
         c.CodexBar ??= new();
-        c.CodexBar.Providers = (c.CodexBar.Providers ?? []).Where(p => p is "claude" or "codex" or "antigravity").Distinct().ToArray();
+        // The same ids as the checkboxes in settings.html (cb_claude, cb_codex, cb_antigravity, cb_grok).
+        c.CodexBar.Providers = (c.CodexBar.Providers ?? []).Where(p => p is "claude" or "codex" or "antigravity" or "grok").Distinct().ToArray();
         c.CodexBar.PageSize = Math.Clamp(c.CodexBar.PageSize, 0, 6);
         c.CodexBar.RotateInterval = Math.Clamp(c.CodexBar.RotateInterval, 2, 300);
         c.Night ??= new();
@@ -785,6 +836,14 @@ public sealed partial class ConfigStore(string path)
         if (c.Ping.Host.Length > 253 || c.Ping.Host.Any(ch => ch <= ' ' || ch > '~')) c.Ping.Host = PingMonitor.DefaultHost;
         c.Claude ??= new();
         c.Claude.TimeoutSec = Math.Clamp(c.Claude.TimeoutSec, 10, 3600);
+        // only absolute folders (or ~/…), each once however it is spelled, and never ~/.claude itself: it is read already
+        var defaultClaude = ClaudeCredentialDir.KeyOf(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude"));
+        c.Claude.ExtraCredentialDirs = (c.Claude.ExtraCredentialDirs ?? [])
+            .OfType<ClaudeCredentialDir>()
+            .Select(d => new ClaudeCredentialDir { Label = d.Label?.Trim() ?? "", Dir = d.Dir?.Trim() ?? "" })
+            .Select(d => (d, key: d.Label.Length is > 0 and <= ClaudeCredentialDir.MaxLabel && System.IO.Path.IsPathFullyQualified(d.FullPath()) ? d.TryKey() : null))
+            .Where(x => x.key is not null && x.key != defaultClaude)
+            .DistinctBy(x => x.key).Select(x => x.d).DistinctBy(d => d.Label, StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
         c.Cursor ??= new();
         c.Antigravity ??= new();
         c.OpenCode ??= new();
@@ -840,6 +899,12 @@ public sealed partial class ConfigStore(string path)
             if (string.IsNullOrWhiteSpace(s.StateKey)) s.StateKey = null;
             if (string.IsNullOrWhiteSpace(s.OffCmd)) s.OffCmd = null;
             if (string.IsNullOrWhiteSpace(s.OffArgs)) s.OffArgs = null;
+        }
+        // icon size: only the known presets; anything else falls back to the default
+        foreach (var s in c.Shortcuts)
+        {
+            var sz = s.IconSize?.Trim().ToLowerInvariant();
+            s.IconSize = sz is not null && Shortcut.IconSizes.Contains(sz) ? sz : null;
         }
         // a long press runs another key: drop a blank, self-referencing or dangling target, so the phone never offers a hold that does nothing
         foreach (var s in c.Shortcuts)
@@ -1016,9 +1081,9 @@ public sealed partial class ConfigStore(string path)
                 w.Appearance?.Normalize(widget: true);
                 var (minW, minH) = Catalog.MinSize(w.Type);
                 w.W = Math.Clamp(w.W, Math.Min(minW, Catalog.Cols), Catalog.Cols);
-                w.H = Math.Clamp(w.H, Math.Min(minH, Catalog.Rows), Catalog.Rows);
+                w.H = Math.Clamp(w.H, Math.Min(minH, Catalog.MaxRows), Catalog.MaxRows);
                 w.X = Math.Clamp(w.X, 0, Catalog.Cols - w.W);
-                w.Y = Math.Clamp(w.Y, 0, Catalog.Rows - w.H);
+                w.Y = Math.Clamp(w.Y, 0, Catalog.MaxRows - w.H);
                 w.Id = reservedWidgets.TryGetValue(w, out var reservedWidget)
                     ? reservedWidget : UniqueLayoutId(LayoutId(w.Type, w.Type), widgetIds);
                 widgets.Add(w);
@@ -1152,7 +1217,7 @@ public sealed partial class ConfigStore(string path)
 
 public sealed class CodexBarConfig
 {
-    public string[] Providers { get; set; } = ["claude", "codex", "antigravity"];
+    public string[] Providers { get; set; } = ["claude", "codex", "antigravity", "grok"];
     public bool Rotate { get; set; } = true;
     public int PageSize { get; set; } = 2;
     public int RotateInterval { get; set; } = 8;

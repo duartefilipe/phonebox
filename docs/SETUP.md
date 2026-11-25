@@ -360,6 +360,27 @@ under **Settings › Security › Install from device storage**. The panel itsel
 affected. Thanks to  for finding this (#184).
 </details>
 
+<details><summary><b>On an x86 tablet the panel asks for a newer WebView, and the Play Store has none.</b></summary>
+
+Some older tablets have an Intel (x86) processor, such as the Galaxy Tab 3 10.1 (GT-P5200). On the one we tried, the
+Play Store offered no WebView or Chrome newer than 101, below the 105 the panel needs to scale widgets. On a rooted
+device running LineageOS 14.1 (Android 7), LineageOS's own x86 WebView can replace the system one:
+
+1. Take `webview.apk` from the commit with
+   [WebView 119.0.6045.134](https://github.com/LineageOS/android_external_chromium-webview_prebuilt_x86/tree/91c9fde9772f760daebb73402e5f3dce9808f427)
+   (the APK is stored with Git LFS). 119 is the last Chromium for Android 7: from 120 on, WebView needs Android 8.0
+   (API 26), and the newer builds on that repository's default branch will not run on Android 7.
+2. Keep a copy of `/system/app/webview/webview.apk`, put the new APK in its place and restart the tablet.
+   `adb install -r` cannot do this, because the new APK is signed with a different key than the system one.
+3. On Android 7 to 9, Chrome can be the active WebView, and then replacing the system one changes nothing. Open
+   **Developer options › WebView implementation**, pick *Android System WebView* (or disable Chrome), and check that
+   the version is 105 or later under **Settings › Apps › Android System WebView**; the panel's update notice also
+   goes away.
+
+This worked on a GT-P5200 with LineageOS 14.1 (Android 7.1.2), where Chrome 101 is installed next to it. Without root
+there is no newer WebView for these devices.
+</details>
+
 <details><summary><b>I want the volume keys to change the phone's volume.</b></summary>
 
 Turn off **Settings › General › Display › The phone's volume keys switch pages**.

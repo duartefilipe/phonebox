@@ -626,7 +626,7 @@ app.MapPost("/api/phone-mic/setup", async (ConfigStore cfg, CancellationToken ct
 app.MapPost("/api/phone/open", async (AdbReverse adb) => { await adb.OpenPanelAsync(); return Results.Ok(); });
 
 // Widget types and page templates for the settings page's layout editor.
-app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows\":{Catalog.Rows},\"widgets\":{Catalog.WidgetsJson},\"templates\":{Catalog.TemplatesJson}}}",
+app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows\":{Catalog.Rows},\"maxRows\":{Catalog.MaxRows},\"widgets\":{Catalog.WidgetsJson},\"templates\":{Catalog.TemplatesJson}}}",
     "application/json; charset=utf-8"));
 
 // ---------------------------------------------------------------- webhook API: push data and events into the panel
@@ -804,6 +804,10 @@ app.MapGet("/api/discord", (DiscordMonitor dc, ConfigStore cfg) => Results.Json(
     snapshot = dc.Snapshot(),
     control = DiscordMonitor.ControlAllowed(cfg.Get()),
     share = DiscordMonitor.ShareWanted(cfg.Get()),
+    // the current-channel bar: whether you share (its Live badge and Stop), and whether join and the input mode are
+    // allowed beyond its own Control option (mute, deafen and leave only)
+    shareState = DiscordMonitor.ShareStateWanted(cfg.Get()),
+    joinControl = DiscordMonitor.ControlAllowed(cfg.Get(), "join"),
     widgetControl = DiscordMonitor.WidgetControl(cfg.Get()),
     chat = DiscordMonitor.ChatWanted(cfg.Get()),
     chatUnread = dc.ChatUnread(),
@@ -1017,9 +1021,15 @@ app.MapPost(ClaudeHook.Endpoint, async (HttpRequest req, ConfigStore cfg, Approv
     var output = await ClaudeHook.HandleAsync(input, cfg, approvals, sessions, req.HttpContext.RequestAborted);
     return output is null ? Results.Text("") : Results.Json(output);
 });
-app.MapGet("/api/claude/hook", () => Results.Json(new { installed = ClaudeHook.Installed(), path = ClaudeHook.SettingsPath }));
-app.MapPost("/api/claude/hook", (ConfigStore cfg) => ClaudeHook.Configure(true, Port, cfg.Get().Claude.TimeoutSec) is { } err ? Results.BadRequest(new { error = err }) : Results.Ok());
-app.MapDelete("/api/claude/hook", (ConfigStore cfg) => ClaudeHook.Configure(false, Port, cfg.Get().Claude.TimeoutSec) is { } err ? Results.BadRequest(new { error = err }) : Results.Ok());
+app.MapGet("/api/claude/hook", (ConfigStore cfg) =>
+{
+    // full paths are fine here: this endpoint answers the settings page on this computer only
+    var targets = ClaudeHook.Targets(cfg.Get().Claude.ExtraCredentialDirs);
+    // installed while any file has it, so Remove stays reachable when another file couldn't be written
+    return Results.Json(new { installed = targets.Any(t => t.Installed), path = ClaudeHook.SettingsPath, paths = targets });
+});
+app.MapPost("/api/claude/hook", (ConfigStore cfg) => ClaudeHook.Configure(true, Port, cfg.Get().Claude.TimeoutSec, cfg.Get().Claude.ExtraCredentialDirs) is { } err ? Results.BadRequest(new { error = err }) : Results.Ok());
+app.MapDelete("/api/claude/hook", (ConfigStore cfg) => ClaudeHook.Configure(false, Port, cfg.Get().Claude.TimeoutSec, cfg.Get().Claude.ExtraCredentialDirs) is { } err ? Results.BadRequest(new { error = err }) : Results.Ok());
 
 // The recent messages and steps of one running Claude Code session, for the phone's session details. Off until the user
 // turns on Settings › Claude Code › "Show the conversation on the phone"; only a session the monitor currently sees.
@@ -1027,7 +1037,10 @@ app.MapGet("/api/work/conversation", (string id, ConfigStore cfg, SessionMonitor
 {
     // a session inside WSL keeps its chat file in the distro's home; a distro that stopped is not read (that would start it)
     var home = sessions.ConversationHome(id, out var usable);
-    return Results.Json(ClaudeTranscript.ForPhone(cfg.Get().Claude.ShareConversation, usable ? sessions.Snapshot() : [], id, home));
+    var (rows, claudeDir) = sessions.ConversationSource(id);
+    // a native extra-folder session is read from its own folder (ForPhone prefers claudeDir), so the WSL check doesn't apply
+    usable |= claudeDir is not null;
+    return Results.Json(ClaudeTranscript.ForPhone(cfg.Get().Claude.ShareConversation, usable ? rows : [], id, home, claudeDir));
 });
 
 // Codex uses the same PermissionRequest decision contract, through ~/.codex/hooks.json.
