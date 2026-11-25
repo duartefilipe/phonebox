@@ -62,7 +62,7 @@ export const $ = (id) => document.getElementById(id);
 // The native bridge (window.Android) is in every frame, sandboxed widgets included, so each call carries a key that only
 // the panel's own frames receive (MainActivity.bridgeKey). This wrapper adds it.
 const BRIDGE = ['battery', 'buzz', 'haptic', 'is24Hour', 'pcs', 'selectPc', 'forgetPc', 'setBrightness', 'setHomeScreen', 'setOrientation',
-  'setPinned', 'setVolumeKeys', 'setLanguage', 'transport', 'sensors', 'version', 'canListen', 'listen', 'stopListening', 'cancelListening', 'trackpad', 'canWake', 'wakePc'];
+  'setPinned', 'setVolumeKeys', 'setLanguage', 'transport', 'sensors', 'version', 'canListen', 'listen', 'stopListening', 'cancelListening', 'trackpad', 'canWake', 'wakePc', 'probePc'];
 export const bridge = typeof Android === 'undefined' ? null : Object.fromEntries(BRIDGE.filter((m) => typeof Android[m] === 'function')
   .map((m) => [m, (...args) => Android[m](window.__phoneboxKey || '', ...args)]));
 // Live preview inside the agent's layout editor: the layout comes from the editor (unsaved), not from the agent.
@@ -2318,14 +2318,46 @@ export function setNight(on) {
 }
 let unreachableSince = 0;
 
+// Whether a silent agent means the computer is off. Without anything else to go on, the panel waits the unreachable
+// delay. Faster, and more often right: the agent's own word before it left (pcHint: "shutdown" or "sleep" from the
+// state or the stream's "bye", or "stop" when only the agent was quit) and what the phone finds out alone (pcProbe,
+// see PcProbe.kt: whether the computer answers on its own network, whether the phone is still on that network, and
+// whether the USB data link is still there). Both are forgotten when the agent answers again.
+const PROBE_EVERY_MS = 15_000, SURE_MS = 10_000, STOP_TRUST_MS = 10 * 60_000;
+let pcHint = null, pcProbe = null, probeAskedAt = 0, lastRoute = '';
+window.onPcProbe = (json) => {
+  try { pcProbe = { ...JSON.parse(json), at: Date.now() }; } catch (_) { return; }
+  reconcileUnreachableNight();
+};
+function notePower(reason) {
+  if (reason === 'shutdown' || reason === 'sleep' || reason === 'stop') pcHint = { reason, at: Date.now() };
+  else if (reason === null && pcHint && pcHint.reason !== 'stop') pcHint = null; // a sleep the computer woke from
+}
+function pcOff(delayMin) {
+  if (online !== false || !unreachableSince) return false;
+  const gone = Date.now() - unreachableSince;
+  const hint = pcHint?.reason;
+  if (hint === 'shutdown' || hint === 'sleep') return true;
+  const p = pcProbe && pcProbe.at >= unreachableSince ? pcProbe : null;
+  if (p?.host === 'down') return gone >= SURE_MS;                   // nothing answers at the computer's address
+  if (p?.host === 'up') return false;                               // the computer answers, only the agent is gone
+  if (lastRoute === 'usb' && p?.usb === false) return gone >= SURE_MS; // the cable's computer let go of the phone
+  if (lastRoute === 'wifi' && p?.lan === false) return false;       // the phone left the computer's network
+  if (hint === 'stop' && gone < STOP_TRUST_MS) return false;        // the agent was quit, not the computer
+  return gone >= delayMin * 60_000;
+}
+
 function reconcileUnreachableNight(now = new Date()) {
   // a page marked "show while the PC is off" takes the place of the night screen for that case
   const enabled = !PREVIEW && (cfg.display?.nightWhenUnreachable === true || !!awayPage);
   if (!enabled) unreachableSince = 0;
   else if (online === false && unreachableSince === 0) unreachableSince = Date.now();
+  if (enabled && online === false && !idle() && Date.now() - probeAskedAt >= PROBE_EVERY_MS && bridge?.probePc) {
+    probeAskedAt = Date.now();
+    bridge.probePc();
+  }
   const delayMin = Math.max(1, Math.min(30, +cfg.display?.unreachableNightDelayMin || 5));
-  const unreachable = enabled && unreachableSince > 0
-    && Date.now() - unreachableSince >= delayMin * 60_000;
+  const unreachable = enabled && pcOff(delayMin);
   setAway(unreachable && !!awayPage);
   const dark = darkRoom && cfg.display?.nightWhenDark === true;
   setNight((isNight(now) || dark || (unreachable && !awayPage)) && Date.now() > wakeUntil);
@@ -2641,7 +2673,8 @@ export function setOnline(on) {
   if (on && online !== true) { loadConfig(); loadQuotas(); loadWork(); loadPush(); loadApprovals(); loadCalendar(); }
   const changed = online !== on;
   if (!on && changed) unreachableSince = unreachableSince || Date.now();
-  if (on && changed) unreachableSince = 0;
+  if (on && changed) { unreachableSince = 0; pcHint = null; pcProbe = null; probeAskedAt = 0; }
+  if (on) { const r = bridge?.transport?.(); if (r === 'usb' || r === 'wifi') lastRoute = r; }
   online = on;
   reconcileUnreachableNight();
   if (changed) emit('state');
@@ -2659,6 +2692,7 @@ export function applyState(s, replayGen = null) {
   if (!fresh) return replayGen === evGen;
   D.state = s;
   media = mediaFrom(media, s.media);
+  if ('power' in s) notePower(s.power); // an older agent sends no "power" at all
   setOnline(true);
   if (s.cfgVersion !== undefined && cfgVersion !== null && s.cfgVersion !== cfgVersion) loadConfig();
   if (s.pushVersion !== undefined && s.pushVersion !== pushVersion) loadPush();
@@ -2707,6 +2741,7 @@ window.onAgentStream = (event, data) => {
   try { d = JSON.parse(data); } catch (_) { return; }
   if (event === 'state') { applyState(d); for (const e of evPre || []) evOffer(e); evPre = null; }
   else if (event === 'work') applyWork(d);
+  else if (event === 'bye') notePower(d?.reason);
   else if (event === 'spectrum') window.dispatchEvent(new CustomEvent('phonebox-spectrum', { detail: d }));
   else if (event === 'event') { if (evPre) { evPre.push(d); if (evPre.length > 100) evPre.shift(); } else evOffer(d); }
 };

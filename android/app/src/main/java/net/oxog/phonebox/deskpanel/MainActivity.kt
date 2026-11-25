@@ -77,6 +77,8 @@ class MainActivity : Activity(), SensorEventListener {
     @Volatile private var resumed = false
     @Volatile private var volumeKeysFlipPages = true
     private val sensors by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager? }
+    private val probeWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val probing = java.util.concurrent.atomic.AtomicBoolean(false)
     private var lastLux = -1f
     private var lastLuxAt = 0L
     private var near: Boolean? = null
@@ -358,6 +360,7 @@ class MainActivity : Activity(), SensorEventListener {
         stream.stop()
         link.trackpadSocket.close()
         link.close()
+        probeWorker.shutdownNow()
         if (hasWeb) {
             (web.parent as? ViewGroup)?.removeView(web) // a WebView must be detached before destroy()
             web.destroy()
@@ -576,6 +579,31 @@ class MainActivity : Activity(), SensorEventListener {
          */
         @JavascriptInterface
         fun wakePc(key: String, id: String): Boolean = ok(key) && link.wake(id)
+
+        /**
+         * While the agent is silent: checks on the computer itself (AgentLink.probe) and the phone's USB data link, in
+         * the background; the answer arrives through window.onPcProbe(json). One check at a time; a call made while
+         * one runs is dropped.
+         */
+        @JavascriptInterface
+        fun probePc(key: String) {
+            if (!ok(key) || !probing.compareAndSet(false, true)) return
+            try {
+                probeWorker.execute {
+                    try {
+                        val result = link.probe()
+                        val usb = try {
+                            registerReceiver(null, IntentFilter("android.hardware.usb.action.USB_STATE"))?.getBooleanExtra("connected", false)
+                        } catch (_: Exception) { null }
+                        result.put("usb", usb ?: JSONObject.NULL)
+                        val js = "window.onPcProbe && window.onPcProbe(${JSONObject.quote(result.toString())})"
+                        runOnUiThread { if (!destroyed) web.evaluateJavascript(js, null) }
+                    } catch (e: Exception) {
+                        Log.w("PhoneBox", "computer check failed", e)
+                    } finally { probing.set(false) }
+                }
+            } catch (_: java.util.concurrent.RejectedExecutionException) { probing.set(false) }
+        }
 
         /** "landscape" (default), "portrait" or "auto" (follow the phone). */
         @JavascriptInterface

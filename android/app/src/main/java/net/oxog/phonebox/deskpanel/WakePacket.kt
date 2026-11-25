@@ -63,7 +63,7 @@ internal object WakePacket {
     }
 
     /** An IPv4 address written out as four numbers ("192.168.1.5"), never a name: a lookup here would reach for DNS. */
-    private fun ipv4Literal(text: String): java.net.Inet4Address? {
+    fun ipv4Literal(text: String): java.net.Inet4Address? {
         val parts = text.trim().split('.')
         if (parts.size != 4) return null
         val bytes = ByteArray(4)

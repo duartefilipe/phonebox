@@ -271,7 +271,7 @@ internal static class MacMenuBar
                 DynamicTitle: () => MacLoginItem.OtherLoginItem ? "Start at Login (set up by setup.sh)" : "Start at Login",
                 Checked: () => MacLoginItem.Enabled || MacLoginItem.OtherLoginItem, Enabled: () => app is not null && !MacLoginItem.OtherLoginItem),
             MenuEntry.Separator,
-            new("Quit PhoneBox", () => { _quitting = true; life.StopApplication(); }, Key: "q"),
+            new("Quit PhoneBox", () => { _quitting = true; PowerSignal.Quitting(); life.StopApplication(); }, Key: "q"),
         ];
     }
 

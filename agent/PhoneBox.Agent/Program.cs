@@ -92,6 +92,7 @@ AddMonitor<GitHubMonitor>(builder.Services);
 AddMonitor<PingMonitor>(builder.Services);
 AddMonitor<AdbReverse>(builder.Services);
 AddMonitor<SessionLockMonitor>(builder.Services);
+AddMonitor<PowerWatch>(builder.Services);
 AddMonitor<UpdateService>(builder.Services);
 AddMonitor<PrivacyMonitor>(builder.Services);
 AddMonitor<CalendarMonitor>(builder.Services);
@@ -626,6 +627,7 @@ object State(IServiceProvider sp, long? ev)
         toggles = Shortcuts.States(sp.GetRequiredService<ConfigStore>().Get(), push, sp.GetRequiredService<AudioControl>()),
         cycles = Shortcuts.CycleStates(sp.GetRequiredService<ConfigStore>().Get()),
         phoneMic = sp.GetRequiredService<PhoneMic>().PhoneState(),
+        power = PowerSignal.Current,
     };
 }
 
@@ -848,9 +850,11 @@ app.MapGet("/api/stream", async (HttpContext ctx, PushStore push, SessionMonitor
     IHostApplicationLifetime life, ILogger<Program> log) =>
 {
     // Ends when the agent begins to stop, too: the server otherwise waits up to 30 s for this never-ending response
-    // before it lets a restart, an update or Quit finish.
-    using var linked = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, life.ApplicationStopping);
+    // before it lets a restart, an update or Quit finish. The loop leaves at once to send a last "bye" with the reason
+    // (PowerSignal); the writes are cut off 1.5 s later in any case.
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
     var ct = linked.Token;
+    var stopping = 0;
     var isPhone = ctx.Request.Headers.ContainsKey("X-PhoneBox-App");
     var via = ctx.Connection.LocalPort == usb.Port ? "USB" : ctx.Connection.LocalPort == Port ? "local" : "Wi-Fi";
     log.LogInformation("live stream opened ({Who}, {Via})", isPhone ? "phone" : "other client", via);
@@ -869,6 +873,12 @@ app.MapGet("/api/stream", async (HttpContext ctx, PushStore push, SessionMonitor
     void OnPoke() { Volatile.Write(ref poked, 1); OnEmit(); }
     push.Emitted += OnEmit;
     StateSignal.Changed += OnPoke;
+    using var onStop = life.ApplicationStopping.Register(() =>
+    {
+        Volatile.Write(ref stopping, 1);
+        OnEmit();
+        try { linked.CancelAfter(1500); } catch (ObjectDisposedException) { }
+    });
     try
     {
         var seq = push.Seq;
@@ -877,7 +887,7 @@ app.MapGet("/api/stream", async (HttpContext ctx, PushStore push, SessionMonitor
         var lastSpec = 0L;
         var lastState = 0L;
         var tick = 0;
-        while (!ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested && Volatile.Read(ref stopping) == 0)
         {
             foreach (var e in push.Since(seq)) { await Send("event", e); seq = e.Seq; }
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -917,6 +927,7 @@ app.MapGet("/api/stream", async (HttpContext ctx, PushStore push, SessionMonitor
             if (specActive) waitMs = Math.Min(waitMs, lastSpec + 1000 / SpectrumAnalyzer.Fps - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             await wake.WaitAsync(TimeSpan.FromMilliseconds(Math.Max(5, waitMs)), ct);
         }
+        if (Volatile.Read(ref stopping) == 1 && PowerSignal.LeaveReason() is { } reason) await Send("bye", new { reason });
     }
     catch (OperationCanceledException) { }
     catch (IOException) { }

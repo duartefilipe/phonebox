@@ -83,7 +83,7 @@ public sealed class Tray : IHostedService
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostart);
         menu.Items.Add(new ToolStripSeparator());
-        var quit = menu.Items.Add("", null, (_, _) => _life.StopApplication());
+        var quit = menu.Items.Add("", null, (_, _) => { PowerSignal.Quitting(); _life.StopApplication(); });
         menu.Opening += (_, _) =>
         {
             var culture = UiCulture();

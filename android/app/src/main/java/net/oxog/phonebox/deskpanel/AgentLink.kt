@@ -401,6 +401,44 @@ class AgentLink(private val context: Context) {
         return WakePacket.linksOnOwnNetwork(pc.hosts, lanLinks()).mapNotNull { link -> networkOwning(link)?.let { link to it } }
     }
 
+    /**
+     * What the phone finds out alone about the active computer (see [PcProbe]); blocks up to about 11 s, so never on
+     * the UI thread. "host" is up, down or unknown; "lan" says whether the phone is on the computer's own network now
+     * (null when no local address of the computer is stored, as with a Tailscale-only or USB-only pairing).
+     */
+    fun probe(): JSONObject {
+        val unknown = JSONObject().put("host", "unknown").put("lan", JSONObject.NULL)
+        val pc = activePc() ?: return unknown
+        val local = pc.hosts.mapNotNull { WakePacket.ipv4Literal(it) }.filter { it.isSiteLocalAddress }
+        // below API 22 no socket can be bound to a network (wakeTargets is empty there), which says nothing about the LAN
+        if (local.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return unknown
+        val targets = wakeTargets(pc)
+        val pairs = local.mapNotNull { ip -> targets.firstOrNull { it.first.contains(ip) }?.let { ip to it.second } }
+        val tries = pairs.map { (ip, network) ->
+            PcProbe.ports(pc.port).map { port ->
+                val result = arrayOf(PcProbe.Host.UNKNOWN)
+                Thread {
+                    result[0] = try {
+                        network.socketFactory.createSocket().use { it.connect(java.net.InetSocketAddress(ip, port), PcProbe.CONNECT_TIMEOUT_MS) }
+                        PcProbe.Host.UP
+                    } catch (_: java.net.SocketTimeoutException) {
+                        PcProbe.classify(null, timedOut = true)
+                    } catch (e: Exception) {
+                        PcProbe.classify(PcProbe.errnoName(e), timedOut = false)
+                    }
+                }.apply { isDaemon = true; start() } to result
+            }
+        }
+        val deadline = System.currentTimeMillis() + PcProbe.CONNECT_TIMEOUT_MS + 1000
+        val host = PcProbe.ofComputer(tries.map { address ->
+            PcProbe.ofAddress(address.map { (thread, result) ->
+                thread.join((deadline - System.currentTimeMillis()).coerceAtLeast(1))
+                if (thread.isAlive) PcProbe.Host.UNKNOWN else result[0]
+            })
+        })
+        return JSONObject().put("host", host.name.lowercase()).put("lan", targets.isNotEmpty())
+    }
+
     /** True when the active computer's MACs are known and the phone is on that computer's own network, where a packet can be sent. */
     fun canWake(): Boolean = activePc()?.let { it.macs.isNotEmpty() && wakeTargets(it).isNotEmpty() } == true
 
