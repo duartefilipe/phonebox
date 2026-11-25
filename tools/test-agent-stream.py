@@ -33,7 +33,10 @@ def main():
     dependencies = [artifact(*(dep.findtext("m:" + key, namespaces=NS) for key in ["groupId", "artifactId", "version"]))
                     for dep in pom.findall("m:dependencies/m:dependency", NS)]
     stdlib = artifact("org.jetbrains.kotlin", "kotlin-stdlib", version)
-    annotations = sorted((cache / "org.jetbrains/annotations").glob("*/*/annotations-*.jar"))
+    # A cache that also holds annotations-<version>-sources.jar must not hand that one to the compiler: it carries the
+    # sources, not the classes, and every nullability annotation then fails to resolve.
+    annotations = sorted(j for j in (cache / "org.jetbrains/annotations").glob("*/*/annotations-*.jar")
+                         if not j.stem.endswith(("-sources", "-javadoc")))
     if not annotations:
         raise SystemExit("Missing cached JetBrains annotations; run the Android Gradle build first")
     classpath = os.pathsep.join(map(str, [stdlib, annotations[-1]]))
@@ -61,11 +64,12 @@ class SharedPreferencesImpl(private val map: MutableMap<String, Any?> = mutableM
     override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
         override fun clear() = apply { map.clear() }
         override fun putString(k: String, v: String?) = apply { map[k] = v }
+        override fun putBoolean(k: String, v: Boolean) = apply { map[k] = v }
         override fun apply() {}
     }
 }
 interface SharedPreferences {
-    interface Editor { fun clear(): Editor; fun putString(key: String, value: String?): Editor; fun apply() }
+    interface Editor { fun clear(): Editor; fun putString(key: String, value: String?): Editor; fun putBoolean(key: String, value: Boolean): Editor; fun apply() }
     fun contains(key: String): Boolean
     fun getBoolean(key: String, defValue: Boolean): Boolean
     fun getString(key: String, defValue: String?): String?
@@ -243,6 +247,39 @@ fun checkPairRefresh() {
 }
 
 /**
+ * The refresh that runs while the cable is plugged in used to make the cable's computer the active one every time,
+ * which pulled the panel back from a hub about once a minute. With "the cable wins" turned off it keeps the addresses
+ * and the key up to date and leaves the choice alone; with it on, the old behaviour stands.
+ */
+fun checkTheCableTakesTheActiveComputerOnlyWhenItMay() {
+    val refresh = AgentLink::class.java.getDeclaredMethod("refreshPairing", java.net.HttpURLConnection::class.java).apply { isAccessible = true }
+    val hub = JSONObject().put("id", "hub-fp").put("name", "Hub").put("hosts", JSONArray(listOf("10.0.0.9"))).put("port", 8766).put("token", "th")
+    val cable = JSONObject().put("pc", "Desk").put("enabled", true).put("fingerprint", "desk-fp")
+        .put("hosts", JSONArray(listOf("10.0.0.2"))).put("port", 8766).put("token", "td").toString()
+
+    fun activeAfterRefresh(usbWins: Boolean): String {
+        val ctx = Context()
+        ctx.getSharedPreferences("pairing", 0).edit().putString("pcs", JSONArray().put(hub).toString()).putString("active", "hub-fp").apply()
+        val link = AgentLink(ctx)
+        link.usbWins = usbWins
+        refresh.invoke(link, PairAnswer(200, cable))
+        // the cable's computer is stored either way: only the choice differs
+        check(ctx.getSharedPreferences("pairing", 0).getString("pcs", null)!!.contains("desk-fp")) { "The refresh did not store the cable's computer" }
+        link.close()
+        return ctx.getSharedPreferences("pairing", 0).getString("active", null)!!
+    }
+
+    check(activeAfterRefresh(true) == "desk-fp") { "Control: with the cable winning it must become the active computer" }
+    check(activeAfterRefresh(false) == "hub-fp") { "The cable took the active computer back even though it was turned down" }
+
+    // the setting is remembered, so it already applies to the first request after a restart
+    val ctx = Context()
+    AgentLink(ctx).let { it.usbWins = false; it.close() }
+    check(!AgentLink(ctx).usbWins) { "The cable setting was not remembered for the next start" }
+    println("CABLE VERIFIED")
+}
+
+/**
  * The MACs stored for a computer survive an answer that reports none (its adapter was briefly not eligible), and a
  * report that has some replaces them.
  */
@@ -340,6 +377,7 @@ fun checkMacRefreshSurvivesAComputerSwitch(ssl: SSLContext, fp: String) {
 
 fun main(args: Array<String>) {
     checkPairRefresh()
+    checkTheCableTakesTheActiveComputerOnlyWhenItMay()
     checkAnEmptyMacReportKeepsTheStoredMacs()
     val ks = KeyStore.getInstance("PKCS12")
     java.io.FileInputStream(args[0]).use { ks.load(it, "changeit".toCharArray()) }
