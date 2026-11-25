@@ -1,15 +1,22 @@
-# PhoneBox hub for Docker / Portainer (Stacks › Add stack). See docker/README.md.
+# PhoneBox hub for Docker / Portainer. See docker/README.md.
+# The image is built on this server from the repository; nothing is pulled from a registry.
 services:
   phonebox-hub:
-    image: ghcr.io/duartefilipe/phonebox-hub:latest
-    # or build it from this repository instead of pulling the image:
-    # build: { context: https://github.com/duartefilipe/phonebox.git#main }
+    image: phonebox-hub:local
+    build:
+      # Portainer › Stacks › Add stack › Repository: the repository is cloned on the server and built here.
+      # With the Web editor instead, use the repository address as the context:
+      #   context: https://github.com/duartefilipe/phonebox.git#main
+      context: ..
+      dockerfile: Dockerfile
+    pull_policy: build
     container_name: phonebox-hub
     # the host's own network: the pairing QR code then offers the server's real LAN address to the phones
     network_mode: host
     restart: unless-stopped
     environment:
-      PHONEBOX_PASSWORD: "change-this-password"
+      # set it in the stack's Environment variables (Portainer) or in a .env file next to this one
+      PHONEBOX_PASSWORD: "${PHONEBOX_PASSWORD:?set PHONEBOX_PASSWORD}"
       # PHONEBOX_ADMIN_PORT: "8767"
     volumes:
       - phonebox-data:/data

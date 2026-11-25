@@ -10,15 +10,31 @@ PC 2 (agente) ─┼──►  Hub (Docker)  ◄──►  Celulares (Wi-Fi; o c
 
 ## 1. Subir o hub no Portainer
 
-**Stacks › Add stack**, cole o conteúdo de [`docker-compose.yml`](docker-compose.yml) e troque `PHONEBOX_PASSWORD`.
+A imagem é construída no próprio servidor, a partir do código do repositório. Nenhuma imagem é publicada ou baixada de
+um registro (o GitHub não constrói nada).
+
+**Stacks › Add stack › Repository**:
+
+| Campo | Valor |
+|---|---|
+| Repository URL | `https://github.com/duartefilipe/phonebox` |
+| Repository reference | `refs/heads/main` |
+| Compose path | `docker/docker-compose.yml` |
+| Environment variables | `PHONEBOX_PASSWORD` = a senha das configurações (obrigatória; sem ela a stack não sobe) |
+
+Clique em **Deploy the stack**. A primeira construção leva alguns minutos (baixa o .NET e compila o agente). Para
+atualizar depois de um `git push`, abra a stack e use **Pull and redeploy**.
+
+Com o **Web editor** em vez de Repository, cole o compose e troque `context: ..` pelo endereço do repositório, como no
+comentário do arquivo.
 
 - Use `network_mode: host`. Assim o QR code de pareamento mostra o IP real do servidor.
 - Portas: **8766** para os celulares e **8767** para as configurações (`https://IP-DO-SERVIDOR:8767`).
 - O certificado é próprio, então o navegador avisa na primeira vez. Aceite e entre com a senha.
 - Sem `PHONEBOX_PASSWORD`, as configurações não abrem pela rede.
 
-Se a imagem `ghcr.io/duartefilipe/phonebox-hub` estiver privada, deixe o pacote público no GitHub (Packages › phonebox-hub ›
-Package settings) ou use a linha `build:` do compose para construir direto do repositório.
+Para construir à mão no servidor, sem o Portainer: `docker compose -f docker/docker-compose.yml up -d --build` na pasta do
+repositório.
 
 ## 2. Adicionar os PCs
 
