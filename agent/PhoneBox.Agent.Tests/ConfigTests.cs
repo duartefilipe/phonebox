@@ -194,6 +194,22 @@ public class ConfigTests
 
     // An answer equal to the general setting is no override: it would otherwise stay behind and silently stop
     // following a later change of the general one.
+    // Taking the phone over on USB is what it always did, so it stays on; turning it off is what lets a hub keep the
+    // panel while the cable charges.
+    [Fact]
+    public void TakingThePhoneOverOnUsbIsOnByDefaultAndCanBeTurnedOff()
+    {
+        Assert.True(Load("{}").Display.UsbTakeOver);
+        Assert.False(Load("""{ "display": { "usbTakeOver": false } }""").Display.UsbTakeOver);
+        foreach (var name in new[] { "config.default.json", "config.default.linux.json", "config.default.macos.json" })
+        {
+            using var stream = typeof(AgentConfig).Assembly.GetManifestResourceStream(name);
+            Assert.NotNull(stream);
+            using var doc = JsonDocument.Parse(stream, new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            Assert.Equal(JsonValueKind.True, doc.RootElement.GetProperty("display").GetProperty("usbTakeOver").ValueKind);
+        }
+    }
+
     [Fact]
     public void APhoneAnswerEqualToTheGeneralSettingIsNotStored()
     {
@@ -202,6 +218,34 @@ public class ConfigTests
 
         var differs = Load("""{ "display": { "usbWins": true }, "phones": [ { "id": "a", "usbWins": false } ] }""");
         Assert.False(differs.Phones.Single().UsbWins);
+    }
+
+    // Hub mode: each phone can watch a different computer with the same pages. The panel falls back to the first
+    // computer for a page or widget that names none, so the phone's choice is sent first.
+    [Fact]
+    public void EachPhoneCanBeGivenItsOwnComputerToShow()
+    {
+        var json = """
+        { "hub": { "sources": [
+              { "id": "desk", "name": "Desk", "hosts": ["10.0.0.2"], "port": 8766, "token": "t1" },
+              { "id": "shed", "name": "Shed", "hosts": ["10.0.0.3"], "port": 8766, "token": "t2" } ] },
+          "phones": [ { "id": "a", "source": "shed" }, { "id": "b" }, { "id": "c", "source": "gone" } ] }
+        """;
+        var c = Load(json);
+        Assert.Equal(["shed", "desk"], c.SourcesFor("a").Select(s => s.Id));   // its choice comes first
+        Assert.Equal(["desk", "shed"], c.SourcesFor("b").Select(s => s.Id));   // no choice: the hub's own order
+        Assert.Equal(["desk", "shed"], c.SourcesFor("unknown").Select(s => s.Id));
+
+        // a computer the hub no longer has is dropped, so the phone follows the first instead of showing nothing
+        Assert.Null(c.Phones.Single(p => p.Id == "c").Source);
+        Assert.Equal(["desk", "shed"], c.SourcesFor("c").Select(s => s.Id));
+
+        // what each phone receives: its own order, and the addresses and keys never leave the hub
+        var sent = JsonSerializer.Serialize(c.ToPublic("a"), ConfigStore.WriteOpts);
+        Assert.True(sent.IndexOf("shed", StringComparison.Ordinal) < sent.IndexOf("desk", StringComparison.Ordinal),
+            "the phone's own computer must come first in what it receives");
+        Assert.DoesNotContain("10.0.0.2", sent);
+        Assert.DoesNotContain("t1", sent);
     }
 
     [Fact]

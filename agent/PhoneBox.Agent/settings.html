@@ -761,6 +761,8 @@ nav a.on::before { color: var(--accent); }
         <label class="check"><input type="checkbox" data-bind="display.volumeKeys"> <span data-i18n="s.display.volumeKeys">The phone's volume keys switch pages</span></label>
         <label class="check"><input type="checkbox" data-bind="display.usbWins"> <span data-i18n="s.display.usbWins">A connected USB cable outranks the computer chosen in the panel</span></label>
         <span class="hint" data-i18n="s.display.usbWinsHint">On, a phone plugged into a computer always shows that computer. Off, it keeps the computer picked in the panel — a hub reading several computers, say — while the cable only charges; the cable is still used if that computer cannot be reached. Each phone can answer this for itself under Phones.</span>
+        <label class="check"><input type="checkbox" data-bind="display.usbTakeOver"> <span data-i18n="s.display.usbTakeOver">Take the phone over while its cable is plugged in</span></label>
+        <span class="hint" data-i18n="s.display.usbTakeOverHint">On, plugging a phone in sets up the USB tunnel, wakes it and opens the panel. Off, the cable only charges and the phone is left showing whatever it already shows — a hub's panel, for instance — and this computer is read through that hub instead. The features that need the cable (trackpad, dictation, phone mic) stop working then.</span>
         <label class="check"><input type="checkbox" data-bind="display.autoBrightness"> <span data-i18n="s.display.autoBrightness">Brightness follows the room (light sensor)</span></label>
         <label class="check"><input type="checkbox" data-bind="display.nightWhenDark"> <span data-i18n="s.display.nightWhenDark">Show the night screen whenever the room is dark</span></label>
         <label class="check"><input type="checkbox" data-bind="display.nightWhenUnreachable"> <span data-i18n="s.display.nightWhenUnreachable">Show the night screen when the computer is unreachable</span></label>
@@ -2398,7 +2400,13 @@ function renderPhones() {
         h('select', { onchange: (e) => { entry(ph.id).usbWins = e.target.value === '' ? null : e.target.value === 'yes'; changed(); } },
           h('option', { value: '', selected: conf?.usbWins == null }, t('s.phones.usbWinsDefault')),
           h('option', { value: 'yes', selected: conf?.usbWins === true }, t('s.phones.usbWinsYes')),
-          h('option', { value: 'no', selected: conf?.usbWins === false }, t('s.phones.usbWinsNo'))))));
+          h('option', { value: 'no', selected: conf?.usbWins === false }, t('s.phones.usbWinsNo')))),
+      // hub mode: the computer this phone shows where a page or widget names none
+      ...(hubOn() ? [h('div', { class: 'field', style: { maxWidth: '260px', marginTop: '8px' } },
+        h('label', {}, t('s.phones.source')),
+        h('select', { 'data-phone-source': ph.id, onchange: (e) => { const v = e.target.value; const en = entry(ph.id); if (v) en.source = v; else delete en.source; changed(); } },
+          h('option', { value: '', selected: !conf?.source }, t('s.phones.sourceDefault')),
+          ...hubInfo.sources.map((s) => h('option', { value: s.id, selected: conf?.source === s.id }, s.name || s.id.slice(0, 8)))))] : [])));
   }));
 }
 
@@ -3980,7 +3988,7 @@ function fillDefaults() {
   cfg.pages = fitPages(cfg.pages); cfg.shortcuts ??= []; cfg.rules ??= []; cfg.display ??= {}; cfg.display.wallpaper ??= { dim: 45, blur: 0 }; cfg.night = { enabled: true, start: '00:30', end: '07:30', brightness: 0.02, ...cfg.night }; cfg.weather ??= {}; cfg.weather.unit ??= 'celsius'; cfg.weather.model ??= ''; cfg.photos ??= { source: 'folder', folder: '', subfolders: true, immichUrl: '', immichKey: '', immichAlbum: '', immichAlbumName: '' }; cfg.lan ??= { enabled: false, port: 8766 }; cfg.updates ??= { auto: true, repo: 'duartefilipe/phonebox' }; cfg.claude ??= { phoneApprovals: true, timeoutSec: 90, onlyWhenAway: false, shareSessionTitles: false, shareConversation: false, watchWsl: false }; cfg.claude.extraCredentialDirs ??= []; cfg.opencode ??= { phoneApprovals: false, timeoutSec: 90, onlyWhenAway: false, alwaysCountdownSec: 10, watchWsl: false, shareSessionTitles: false, sessions: false };
   cfg.codexBar ??= { providers: ['claude', 'codex', 'antigravity', 'grok'], rotate: true, pageSize: 2, rotateInterval: 8 };
   for (const [k, v] of Object.entries({ language: 'auto', hour12: false, idleReturnSec: 90, switchCountdownSec: 3, touchGraceSec: 20, minDwellSec: 15, holdMaxMin: 30, keepAwake: true, openOnConnect: true,
-    showSeconds: true, vibrate: true, finishToast: true, finishSound: false, finishSoundVolume: 70, volumeKeys: true, usbWins: true, artTint: true, nightWhenUnreachable: false, unreachableNightDelayMin: 5, awayAtNight: true, awayBrightness: 0, proximityWake: true, orientation: 'landscape', tabletRows: false, theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
+    showSeconds: true, vibrate: true, finishToast: true, finishSound: false, finishSoundVolume: 70, volumeKeys: true, usbWins: true, usbTakeOver: true, artTint: true, nightWhenUnreachable: false, unreachableNightDelayMin: 5, awayAtNight: true, awayBrightness: 0, proximityWake: true, orientation: 'landscape', tabletRows: false, theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
   cfg.charge ??= { enabled: false, min: 50, max: 80, method: 'ha' };
   cfg.steam ??= { enabled: false };
 }

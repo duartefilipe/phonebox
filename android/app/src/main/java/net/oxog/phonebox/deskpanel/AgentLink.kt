@@ -536,15 +536,19 @@ class AgentLink(private val context: Context) {
             val reportedMacs = WakePacket.macsFrom(j.optJSONArray("macs"))
             synchronized(pcsLock) {
                 if (!closed) {
-                    // an older agent sends no list: keep the MACs already stored instead of forgetting them
-                    val pc = Pc(fingerprint, name, (0 until hosts.length()).map { hosts.getString(it) }, j.getInt("port"), j.getString("token"),
-                        reportedMacs ?: pcs.firstOrNull { it.id == fingerprint }?.macs ?: emptyList())
-                    val saved = pcs.filter { it.id != pc.id && !(name.isNotEmpty() && it.name == name) } + pc
-                    // With the cable turned down, this refresh keeps the addresses and the key up to date but leaves
-                    // the choice alone: it runs once a minute, and taking the active role here would pull the panel
-                    // back to the cable's computer every time. A choice that no longer exists still falls to this one.
-                    val keep = !usbWins && saved.any { it.id == activeId }
-                    savePcs(saved, if (keep) activeId else pc.id)
+                    val known = pcs.any { it.id == fingerprint || (name.isNotEmpty() && it.name == name) }
+                    // With the cable turned down, a computer the user removed must stay removed: this refresh runs once
+                    // a minute, so adding it back here would undo the removal and keep two computers competing for the
+                    // panel. Pairing itself is unaffected — a QR or USB pairing goes through claim(), not this.
+                    if (usbWins || known) {
+                        // an older agent sends no list: keep the MACs already stored instead of forgetting them
+                        val pc = Pc(fingerprint, name, (0 until hosts.length()).map { hosts.getString(it) }, j.getInt("port"), j.getString("token"),
+                            reportedMacs ?: pcs.firstOrNull { it.id == fingerprint }?.macs ?: emptyList())
+                        val saved = pcs.filter { it.id != pc.id && !(name.isNotEmpty() && it.name == name) } + pc
+                        // the cable also stops taking the active role, which pulled the panel back from the hub
+                        val keep = !usbWins && saved.any { it.id == activeId }
+                        savePcs(saved, if (keep) activeId else pc.id)
+                    }
                 }
             }
         } else if (name.isNotEmpty()) {

@@ -28,6 +28,8 @@ iniciado pela pasta Inicializar do Windows.
 | **Sincronização com o upstream** até `321c603` (tablet com mais linhas, Grok, contas extras do Claude Code, barra do Discord, tamanho de ícone por atalho, etc.). | commit `5b71c2a` |
 | **Tela "PC desligado" sempre ligada e com brilho próprio**: a página fica visível também na janela noturna, no lugar do relógio noturno (Geral › Tela, `display.awayAtNight`, ligado por padrão), e tem brilho próprio (`display.awayBrightness`, 0.01–1; 0 = como antes, o brilho da tela noturna). | `main.js` (`reconcileUnreachableNight`, `applyBrightness`, `awayBrightness`, `setAway`), `Config.cs` (`DisplayConfig.AwayAtNight`, `AwayBrightness`), `settings.html` (Geral › Tela), `config.default*.json`, testes em `tools/ui-tests/pc-off-brightness.spec.js` e `ConfigTests.cs` |
 | **"O cabo sempre vence" virou opção**: antes o USB tinha prioridade fixa sobre o computador escolhido no painel. Agora é configurável em **Geral › Tela** (`display.usbWins`, ligado por padrão) e, por aparelho, em **Geral › Celulares** (`phones[].usbWins`; vazio segue o geral). Desligado, o celular mantém o PC/hub escolhido e o cabo só carrega — o USB continua como reserva se o escolhido não responder. | `android/.../AgentLink.kt` (`usbWins`, `routeOrder`), `MainActivity.kt` (`setUsbWins`), `main.js` (`BRIDGE`, `applyDisplay`), `Config.cs` (`DisplayConfig.UsbWins`, `PhoneConfig.UsbWins`, `UsbWinsFor`, `DisplayConfig.With`), `settings.html`, testes em `ConfigTests.cs`. **Exige reinstalar o APK no celular.** |
+| **Um computador por celular, escolhido no hub**: em **Geral › Celulares › "Computador que este celular mostra"** (`phones[].source`), cada aparelho vê um PC diferente com as mesmas páginas. O hub manda a lista de computadores com o escolhido primeiro, e o painel já usa o primeiro para página/widget que não nomeia nenhum. | `Config.cs` (`PhoneConfig.Source`, `SourcesFor`, `ToPublic`), `settings.html`, testes em `ConfigTests.cs` |
+| **"Assumir o celular pelo cabo" virou opção** (`display.usbTakeOver`, ligada por padrão): desligada, o agente não monta o túnel USB, não entrega a chave, não acorda a tela nem abre o painel — o cabo só carrega e o celular continua no painel do hub. Perde-se trackpad, ditado e microfone do celular, que dependem do cabo. | `AdbReverse.cs` (`Ensure`, chama `RemoveOwnRulesAsync` ao desligar), `Config.cs` (`DisplayConfig.UsbTakeOver`), `settings.html`, `config.default*.json`, testes em `ConfigTests.cs` |
 | **Comandos de instalação documentados**: o que instalar em cada máquina (só o agente num PC lido pelo hub, o hub no Docker, o hub sem Docker, agente e hub no mesmo PC, e o app no celular pelo `adb`), em `docs/SETUP.md` › "Which pieces to install where". As URLs de instalação do `SETUP.md` passaram a apontar para `duartefilipe/phonebox` (só os links de issues seguem no upstream). | `docs/SETUP.md` |
 | **Só três idiomas** (inglês, espanhol e português do Brasil): os outros 20 saíram do painel, das configurações, dos recursos do Android e do ícone da bandeja, junto com o suporte a escrita da direita para a esquerda (só o árabe o usava). `i18n.js` caiu de ~1 MB para ~270 kB e o pacote de traduções de ~1,1 MB para ~130 kB. | `android/.../www/i18n.js`, `locale-existing.js` (único pacote restante), `index.html` e `settings.html` (uma tag `<script>` de idioma), `res/values-*`, `res/xml/locales_config.xml`, `TrayStrings.*.resx`, `Config.cs` (`DisplayConfig.Languages`), `PhoneBox.Agent.csproj`, `style.css` e `settings.html` (regras `[dir="rtl"]` removidas) |
 
@@ -65,6 +67,18 @@ O passo a passo também está **dentro do painel**, em **Geral › Agendas › "
 
 Nota: uma agenda sem eventos nos próximos 14 dias aparece vazia no painel sem que haja erro — o agente só busca essa
 janela (`CalendarMonitor.DaysAhead`). Foi o caso da agenda "Pessoal" aqui, cujo próximo evento é em 29/12.
+
+Cuidado ao recompilar o agente do Windows: **não** matar o processo com `Stop-Process`. Ele guarda configurações em
+memória que só vão para o disco ao sair pelo caminho normal, e matá-lo fez voltar um `config.json` antigo — perdendo
+as agendas e o Wi-Fi, e invalidando o pareamento com o hub (o certificado é gerado de novo ao religar o Wi-Fi). Use
+**Sair** no ícone da bandeja, ou `POST http://127.0.0.1:8765/api/restart`.
+
+### Pendente: o celular se repareia sozinho com o PC do cabo
+
+Com "assumir o celular pelo cabo" desligado e o túnel USB fora do ar, o PC do cabo **ainda volta** à lista de
+computadores do celular em menos de um minuto, por Wi-Fi. O caminho exato não foi rastreado. Enquanto isso, um
+aparelho que deve ficar só no hub precisa do cabo apenas de energia, ou do PC esquecido no painel depois de desligar
+a opção.
 
 ### 2. Subir o hub no Portainer
 

@@ -114,9 +114,21 @@ public sealed class AgentConfig
         charge = new { Charge.Enabled, Charge.Min, Charge.Max },
         // OpenCode prompts: how long the Allow always button waits before it can be pressed (it saves a pattern)
         opencode = new { OpenCode.AlwaysCountdownSec },
-        // hub mode: the computers by name, for the panel's pages and widgets; their addresses and keys stay here
-        sources = Hub.Sources.Select(s => new { s.Id, s.Name }),
+        // hub mode: the computers by name, for the panel's pages and widgets; their addresses and keys stay here.
+        // This phone's own computer (Settings › Phones) comes first, so a page or widget that names none shows it.
+        sources = SourcesFor(deviceId).Select(s => new { s.Id, s.Name }),
     };
+
+    /// <summary>
+    /// The hub's computers as one phone sees them: its own choice first (Settings › Phones), the rest after. The panel
+    /// falls back to the first for a page or widget that names no computer, so the order is the choice.
+    /// </summary>
+    public IEnumerable<HubSource> SourcesFor(string? deviceId)
+    {
+        var chosen = Phones.FirstOrDefault(p => p.Id == deviceId)?.Source;
+        if (chosen is null || Hub.Sources.All(s => s.Id != chosen)) return Hub.Sources;
+        return Hub.Sources.Where(s => s.Id == chosen).Concat(Hub.Sources.Where(s => s.Id != chosen));
+    }
 
     /// <summary>Ending processes is allowed when an enabled page has a processes widget that allows it.</summary>
     public IEnumerable<WidgetConfig> Widgets(bool enabledPagesOnly = false) => Pages.Where(p => !enabledPagesOnly || p.Enabled)
@@ -268,6 +280,13 @@ public sealed class DisplayConfig
     /// keeps serving the panel while the cable only charges; USB is still the fallback when it cannot be reached.
     /// </summary>
     public bool UsbWins { get; set; } = true;
+    /// <summary>
+    /// Whether this agent takes a phone over when its cable is plugged in: the USB tunnel, the app's key, waking the
+    /// screen and opening the panel. On by default. Off, the cable only charges and the phone is left to whatever it
+    /// is already showing — a hub's panel, for instance — so this computer is read through the hub like any other.
+    /// Turning it off also gives up the features that need the cable: trackpad, dictation and the phone mic.
+    /// </summary>
+    public bool UsbTakeOver { get; set; } = true;
     /// <summary>A hand near the phone (proximity sensor) wakes the night screen.</summary>
     public bool ProximityWake { get; set; } = true;
     /// <summary>OLED burn-in protection: every 2 minutes the panel moves by a few pixels and the night clock drifts.</summary>
@@ -618,6 +637,12 @@ public sealed class PhoneConfig
     /// while another, plugged into the computer it controls, keeps using it.
     /// </summary>
     public bool? UsbWins { get; set; }
+    /// <summary>
+    /// Hub mode: the computer this phone shows where a page or widget names none (<see cref="HubSource.Id"/>); null
+    /// or an id the hub no longer has falls back to the first computer. It lets one hub serve the same pages to
+    /// several phones, each watching a different computer, without a layout per phone.
+    /// </summary>
+    public string? Source { get; set; }
 }
 
 public sealed class FeedSource
@@ -971,6 +996,8 @@ public sealed partial class ConfigStore(string path)
             ph.HomePage = string.IsNullOrWhiteSpace(ph.HomePage) ? null : PageId(ph.HomePage).Trim();
             // the same answer as the general setting is no override at all: store it as "follow the general one"
             if (ph.UsbWins == c.Display.UsbWins) ph.UsbWins = null;
+            // a computer the hub no longer has is no choice: the phone falls back to the first one
+            ph.Source = string.IsNullOrWhiteSpace(ph.Source) || c.Hub.Sources.All(s => s.Id != ph.Source) ? null : ph.Source.Trim();
         }
         c.Ping ??= new();
         c.Ping.Adapters = (c.Ping.Adapters ?? []).Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(16).ToList();

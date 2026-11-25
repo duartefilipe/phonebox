@@ -263,14 +263,36 @@ fun checkTheCableTakesTheActiveComputerOnlyWhenItMay() {
         val link = AgentLink(ctx)
         link.usbWins = usbWins
         refresh.invoke(link, PairAnswer(200, cable))
-        // the cable's computer is stored either way: only the choice differs
-        check(ctx.getSharedPreferences("pairing", 0).getString("pcs", null)!!.contains("desk-fp")) { "The refresh did not store the cable's computer" }
         link.close()
         return ctx.getSharedPreferences("pairing", 0).getString("active", null)!!
     }
 
     check(activeAfterRefresh(true) == "desk-fp") { "Control: with the cable winning it must become the active computer" }
     check(activeAfterRefresh(false) == "hub-fp") { "The cable took the active computer back even though it was turned down" }
+
+    // A computer removed in the panel must stay removed: this refresh runs once a minute, so adding it back would
+    // undo the removal and leave two computers competing for the panel.
+    fun storedAfterRefresh(usbWins: Boolean): String {
+        val ctx = Context()
+        ctx.getSharedPreferences("pairing", 0).edit().putString("pcs", JSONArray().put(hub).toString()).putString("active", "hub-fp").apply()
+        val link = AgentLink(ctx)
+        link.usbWins = usbWins
+        refresh.invoke(link, PairAnswer(200, cable))
+        link.close()
+        return ctx.getSharedPreferences("pairing", 0).getString("pcs", null)!!
+    }
+    check(storedAfterRefresh(true).contains("desk-fp")) { "Control: with the cable winning its computer must be stored" }
+    check(!storedAfterRefresh(false).contains("desk-fp")) { "The cable added its computer back after it was removed" }
+    // one that is still paired keeps being refreshed, so its addresses and key stay current
+    val both = Context()
+    both.getSharedPreferences("pairing", 0).edit()
+        .putString("pcs", JSONArray().put(hub).put(JSONObject().put("id", "desk-fp").put("name", "Desk")
+            .put("hosts", JSONArray(listOf("10.0.0.8"))).put("port", 8766).put("token", "old")).toString())
+        .putString("active", "hub-fp").apply()
+    AgentLink(both).let { it.usbWins = false; refresh.invoke(it, PairAnswer(200, cable)); it.close() }
+    val refreshed = both.getSharedPreferences("pairing", 0).getString("pcs", null)!!
+    check(refreshed.contains("10.0.0.2") && !refreshed.contains("10.0.0.8")) { "A paired computer was not refreshed: $refreshed" }
+    check(both.getSharedPreferences("pairing", 0).getString("active", null) == "hub-fp") { "The refresh moved the choice" }
 
     // the setting is remembered, so it already applies to the first request after a restart
     val ctx = Context()

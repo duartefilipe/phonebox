@@ -537,6 +537,21 @@ public sealed class AdbReverse(ConfigStore cfg, ILogger<AdbReverse> log, AgentEn
         }
         _missingApp = _missingApp.Where(devices.Contains).ToArray();
         if (devices.Length == 0) { Report("no phone connected, waiting..."); return; }
+        // Settings › Display › the cable only charges: no tunnel, no key, no waking the phone or opening the panel, so
+        // a phone showing a hub's panel keeps showing it. This computer is then read through the hub like any other.
+        if (!cfg.Get().Display.UsbTakeOver)
+        {
+            // a tunnel from before the setting was turned off has to come off too, or the phone keeps reaching this
+            // agent over the cable and nothing changes until it is unplugged
+            if (_reverseSet.Count > 0 || _setHere.Count > 0 || _pending.Count > 0)
+            {
+                try { await RemoveOwnRulesAsync(ct); }
+                catch (Exception ex) when (ex is IOException or TimeoutException or OperationCanceledException && !ct.IsCancellationRequested)
+                { log.LogInformation("the USB tunnel could not be taken off ({Why})", ex.Message); }
+            }
+            Report("the cable only charges (Settings › Display): the phone is left as it is");
+            return;
+        }
 
         // A phone that did not answer "reverse --list" sits out the rest of this round (home screen, keep awake): one
         // more failure there would end the round before the phones after it. The next round tries it again.
