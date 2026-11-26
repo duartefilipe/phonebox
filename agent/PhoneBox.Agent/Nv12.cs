@@ -13,29 +13,43 @@ internal static class Nv12
     /// <paramref name="crop"/> of the BGRA picture at <paramref name="src"/> (rows <paramref name="stride"/> bytes apart),
     /// scaled to <paramref name="width"/> × <paramref name="height"/> (both even), written to <paramref name="dst"/>.
     /// </summary>
-    public static unsafe void FromBgra(byte* src, int stride, PixelRect crop, byte* dst, int width, int height)
+    public static unsafe void FromBgra(byte* src, int stride, PixelRect crop, byte* dst, int width, int height) =>
+        FromBgra(src, stride, crop, dst, width, height, new PixelRect(0, 0, width, height));
+
+    /// <summary>
+    /// As above, but the picture fills only <paramref name="into"/> (even, inside the output) and the rest is black:
+    /// a crop that changes shape a little keeps the encoder's size, with bars, instead of restarting the stream.
+    /// </summary>
+    public static unsafe void FromBgra(byte* src, int stride, PixelRect crop, byte* dst, int width, int height, PixelRect into)
     {
         if (width <= 0 || height <= 0 || (width & 1) != 0 || (height & 1) != 0) throw new ArgumentException("even size needed");
         if (crop.IsEmpty) throw new ArgumentException("empty crop");
+        into = into.Clamp(width, height).Even();
+        if (into.IsEmpty) throw new ArgumentException("empty target");
+        if (into.Width != width || into.Height != height)
+        {
+            new Span<byte>(dst, width * height).Fill(16);                 // black
+            new Span<byte>(dst + width * height, width * height / 2).Fill(128);
+        }
 
         // where each output column and row samples the source: the left/top pixel and the weight (0..256) of the next
-        var x0 = new int[width];
-        var xw = new int[width];
-        var x1 = new int[width];
-        Axis(crop.X, crop.Width, width, x0, x1, xw);
-        var y0 = new int[height];
-        var yw = new int[height];
-        var y1 = new int[height];
-        Axis(crop.Y, crop.Height, height, y0, y1, yw);
+        var x0 = new int[into.Width];
+        var xw = new int[into.Width];
+        var x1 = new int[into.Width];
+        Axis(crop.X, crop.Width, into.Width, x0, x1, xw);
+        var y0 = new int[into.Height];
+        var yw = new int[into.Height];
+        var y1 = new int[into.Height];
+        Axis(crop.Y, crop.Height, into.Height, y0, y1, yw);
 
-        var yPlane = dst;
-        var uv = dst + width * height;
+        var yPlane = dst + into.Y * width + into.X;
+        var uv = dst + width * height + (into.Y / 2) * width + into.X;
         var r = stackalloc int[4];
         var g = stackalloc int[4];
         var b = stackalloc int[4];
-        for (var oy = 0; oy < height; oy += 2)
+        for (var oy = 0; oy < into.Height; oy += 2)
         {
-            for (var ox = 0; ox < width; ox += 2)
+            for (var ox = 0; ox < into.Width; ox += 2)
             {
                 for (var k = 0; k < 4; k++)
                 {

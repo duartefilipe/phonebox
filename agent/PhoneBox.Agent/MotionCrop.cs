@@ -27,6 +27,16 @@ internal sealed class MotionCrop
     internal const double MinShare = 0.02;
     /// <summary>The block must fill this much of its bounding box: a video is a rectangle, scattered changes are not.</summary>
     internal const double MinFill = 0.5;
+    /// <summary>
+    /// A block larger than this part of the window says nothing about where the video is: the page was scrolled or
+    /// redrawn. The crop found before is kept rather than thrown away for it.
+    /// </summary>
+    internal const double MaxShare = 0.6;
+    /// <summary>
+    /// Updates (about 2 s) before a first crop is taken: in the first moments only part of the video has moved, and a
+    /// crop taken then was too small (measured on a real page: a 258×448 strip of a 1720×1392 window, kept for good).
+    /// </summary>
+    internal const int Warmup = 20;
 
     private readonly float[] _heat = new float[Cols * Rows];
     private readonly byte[] _prev = new byte[Cols * Rows];
@@ -35,7 +45,7 @@ internal sealed class MotionCrop
     private bool _hasPrev;
     private int _width, _height;
     private PixelRect? _candidate;
-    private int _stable;
+    private int _stable, _updates;
 
     /// <summary>The video's rectangle in window pixels, or null while nothing has been found.</summary>
     public PixelRect? Crop { get; private set; }
@@ -44,6 +54,7 @@ internal sealed class MotionCrop
     {
         Array.Clear(_heat);
         _hasPrev = false;
+        _updates = 0;
         _candidate = null;
         _stable = 0;
         Crop = null;
@@ -87,6 +98,7 @@ internal sealed class MotionCrop
             _prev[i] = grid[i];
         }
         _hasPrev = true;
+        _updates++;
 
         var block = LargestBlock();
         if (block is not { } b) { _candidate = null; _stable = 0; return; }
@@ -95,7 +107,7 @@ internal sealed class MotionCrop
         if (_candidate is { } c && c.Near(px, slack)) _stable++;
         else { _candidate = px; _stable = 0; }
 
-        if (Crop is not { } now) { if (_stable >= GrowAfter) Crop = px; return; }
+        if (Crop is not { } now) { if (_stable >= GrowAfter && _updates >= Warmup) Crop = px; return; }
         if (now.Near(px, slack)) return;
         var grows = px.Area >= now.Area;
         if (_stable >= (grows ? GrowAfter : ShrinkAfter)) Crop = px;
@@ -159,7 +171,7 @@ internal sealed class MotionCrop
             }
             if (count > bestCount) { bestCount = count; best = (c0, r0, c1, r1); }
         }
-        if (bestCount < MinShare * Cols * Rows) return null;
+        if (bestCount < MinShare * Cols * Rows || bestCount > MaxShare * Cols * Rows) return null;
         var (bc0, br0, bc1, br1) = best;
         var boxCells = (bc1 - bc0 + 1) * (br1 - br0 + 1);
         return bestCount >= MinFill * boxCells ? best : null;

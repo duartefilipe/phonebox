@@ -168,7 +168,7 @@ public sealed class VideoCropTests
     public void ThePartThatMovesIsFound()
     {
         var video = new PixelRect(160, 60, 320, 180);
-        var m = Watch(video, MotionCrop.GrowAfter + 5);
+        var m = Watch(video, Settled);
         var crop = Assert.NotNull(m.Crop);
         // within a cell (4 px here) of the real edges
         Assert.True(crop.Near(video, 8), $"{crop} vs {video}");
@@ -178,7 +178,7 @@ public sealed class VideoCropTests
     [Fact]
     public void NothingIsTakenBeforeItSettles()
     {
-        var m = Watch(new PixelRect(160, 60, 320, 180), MotionCrop.GrowAfter - 2);
+        var m = Watch(new PixelRect(160, 60, 320, 180), MotionCrop.Warmup - 2);
         Assert.Null(m.Crop);
     }
 
@@ -196,11 +196,49 @@ public sealed class VideoCropTests
         Assert.Null(m.Crop);
     }
 
+    private static readonly int Settled = Math.Max(MotionCrop.GrowAfter, MotionCrop.Warmup) + 5;
+
+    [Fact]
+    public void AScrolledPageKeepsTheCropFoundBefore()
+    {
+        var video = new PixelRect(160, 60, 320, 180);
+        var m = Watch(video, Settled);
+        // the whole page moves (scrolled) for a while: that says nothing about where the video is
+        Watch(new PixelRect(0, 0, 640, 360), MotionCrop.ShrinkAfter + 10, m);
+        Assert.True(m.Crop!.Value.Near(video, 8), $"{m.Crop} vs {video}");
+    }
+
+    [Fact]
+    public void AWholeWindowOnTheMoveIsNoCrop()
+    {
+        var m = Watch(new PixelRect(0, 0, 640, 360), Settled + 20);
+        Assert.Null(m.Crop);
+    }
+
+    [Theory]
+    [InlineData(948, 540, 948, 576, true)]   // a few rows more: bars, same encoder
+    [InlineData(846, 540, 948, 540, true)]
+    [InlineData(568, 324, 720, 810, false)]  // wide against tall: a new encoder
+    [InlineData(1280, 720, 720, 1280, false)]
+    public void ASmallChangeOfShapeKeepsTheEncoder(int w, int h, int ew, int eh, bool same) =>
+        Assert.Equal(same, VideoCrop.SameShape(w, h, ew, eh));
+
+    [Fact]
+    public void ThePictureIsFittedWithBars()
+    {
+        var into = VideoCrop.Letterbox(1280, 720, 948, 576);
+        Assert.Equal(948, into.Width);
+        Assert.Equal(532, into.Height);              // 948 / 16 * 9 = 533.25, even
+        Assert.Equal(22, into.Y);                    // centred: (576 - 532) / 2
+        Assert.Equal(0, into.X);
+        Assert.Equal(new PixelRect(0, 0, 640, 360), VideoCrop.Letterbox(640, 360, 640, 360));
+    }
+
     [Fact]
     public void AStillSceneDoesNotShrinkTheCropToOneActor()
     {
         var video = new PixelRect(160, 60, 320, 180);
-        var m = Watch(video, MotionCrop.GrowAfter + 5);
+        var m = Watch(video, Settled);
         // then only a small part of the video moves for a while (shorter than the heat lasts)
         Watch(new PixelRect(280, 120, 80, 60), MotionCrop.ShrinkAfter / 2, m);
         Assert.True(m.Crop!.Value.Near(video, 8), $"{m.Crop} shrank");

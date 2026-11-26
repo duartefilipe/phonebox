@@ -170,6 +170,28 @@ internal static class VideoCrop
         port.X + (int)Math.Round(r.X * r.Dpr), port.Y + (int)Math.Round(r.Y * r.Dpr),
         (int)Math.Round(r.Width * r.Dpr), (int)Math.Round(r.Height * r.Dpr));
 
+    /// <summary>How far two shapes may differ (in aspect ratio) and still share one encoder, the rest made up by bars.</summary>
+    internal const double ShapeSlack = 0.12;
+
+    /// <summary>True when a picture of the first size fits the second with bars of at most <see cref="ShapeSlack"/>.</summary>
+    internal static bool SameShape(int width, int height, int encWidth, int encHeight)
+    {
+        if (width <= 0 || height <= 0 || encWidth <= 0 || encHeight <= 0) return false;
+        var a = width / (double)height;
+        var b = encWidth / (double)encHeight;
+        return Math.Abs(a - b) / b <= ShapeSlack;
+    }
+
+    /// <summary>Where a <paramref name="width"/> × <paramref name="height"/> picture goes in a larger frame: as big as fits, centred, even.</summary>
+    internal static PixelRect Letterbox(int width, int height, int frameWidth, int frameHeight)
+    {
+        if (width <= 0 || height <= 0) return new(0, 0, frameWidth, frameHeight);
+        var scale = Math.Min(frameWidth / (double)width, frameHeight / (double)height);
+        var w = Math.Min(frameWidth, Math.Max(2, (int)Math.Round(width * scale) & ~1));
+        var h = Math.Min(frameHeight, Math.Max(2, (int)Math.Round(height * scale) & ~1));
+        return new PixelRect(((frameWidth - w) / 2) & ~1, ((frameHeight - h) / 2) & ~1, w, h);
+    }
+
     /// <summary>
     /// The size a <paramref name="width"/> × <paramref name="height"/> picture is sent at: kept whole up to the box,
     /// shrunk to fit it otherwise, aspect kept, even on both sides (4:2:0 video).

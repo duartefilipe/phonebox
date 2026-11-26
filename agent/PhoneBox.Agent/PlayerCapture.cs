@@ -385,20 +385,21 @@ public sealed class PlayerCapture : IDisposable
         var crop = w.Crop.Value;
 
         var timeUs = (long)Stopwatch.GetElapsedTime(w.Start).TotalMicroseconds;
-        (PixelRect Rect, int W, int H)? converted = null;
+        (PixelRect Rect, int W, int H, PixelRect Into)? converted = null;
         foreach (var c in due)
         {
             c.Taken(now);
             var area = c.Crop ? crop : full;
             var (ow, oh) = VideoCrop.Fit(area.Width, area.Height, c.Box.Width, c.Box.Height);
             if (ow < 16 || oh < 16) continue;
-            if (!c.EnsureEncoder(ow, oh, _log)) continue;
-            var size = Nv12.Size(ow, oh);
-            if (converted is not { } done || done.Rect != area || done.W != ow || done.H != oh)
+            // the encoder keeps its size while the crop only changes a little: the picture is fitted in with bars
+            if (!c.Prepare(ow, oh, now, _log, out var ew, out var eh, out var into)) continue;
+            var size = Nv12.Size(ew, eh);
+            if (converted is not { } done || done.Rect != area || done.W != ew || done.H != eh || done.Into != into)
             {
                 if (w.Nv12.Length < size) w.Nv12 = new byte[size];
-                fixed (byte* dst = w.Nv12) Nv12.FromBgra(bgra, stride, area, dst, ow, oh);
-                converted = (area, ow, oh);
+                fixed (byte* dst = w.Nv12) Nv12.FromBgra(bgra, stride, area, dst, ew, eh, into);
+                converted = (area, ew, eh, into);
             }
             c.Encode(w.Nv12.AsSpan(0, size), timeUs, w.Encoded, c.Crop ? w.CropBy : "window");
         }
@@ -524,6 +525,37 @@ public sealed class PlayerCapture : IDisposable
         {
             var interval = 1000 / Math.Max(1, Fps);
             _nextDue = Math.Max(_nextDue + interval, now + interval - interval / 4);
+        }
+
+        /// <summary>A new shape must last this long before the encoder is restarted for it (a key frame, a short pause).</summary>
+        private const long ReshapeAfterMs = 1500;
+        private long _reshapeSince;
+        private (int Width, int Height) _encoderBox;
+
+        /// <summary>
+        /// The size to encode at for a picture that wants <paramref name="width"/> × <paramref name="height"/>, and where
+        /// in it the picture goes. The running encoder is kept while the shape is about the same (bars make up the
+        /// rest) or has differed only briefly; a new encoder, at the new size, only for a lasting change.
+        /// </summary>
+        public bool Prepare(int width, int height, long now, ILogger log, out int encWidth, out int encHeight, out PixelRect into)
+        {
+            if (_encoder is { } e && e.Fps == Fps && _encoderBox == Box)
+            {
+                var same = VideoCrop.SameShape(width, height, e.Width, e.Height);
+                if (same) _reshapeSince = 0;
+                else if (_reshapeSince == 0) _reshapeSince = now;
+                if (same || now - _reshapeSince < ReshapeAfterMs)
+                {
+                    (encWidth, encHeight) = (e.Width, e.Height);
+                    into = VideoCrop.Letterbox(width, height, e.Width, e.Height);
+                    return true;
+                }
+            }
+            _reshapeSince = 0;
+            (encWidth, encHeight, into) = (width, height, new PixelRect(0, 0, width, height));
+            if (!EnsureEncoder(width, height, log)) return false;
+            _encoderBox = Box;
+            return true;
         }
 
         public bool EnsureEncoder(int width, int height, ILogger log)

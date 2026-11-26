@@ -50,6 +50,20 @@ public sealed class VideoStreamTests
     }
 
     [Fact]
+    public unsafe void BarsAroundAPictureAreBlack()
+    {
+        var white = Solid(16, 16, 255, 255, 255);
+        var dst = new byte[Nv12.Size(16, 16)];
+        fixed (byte* s = white)
+        fixed (byte* d = dst)
+            Nv12.FromBgra(s, 16 * 4, new PixelRect(0, 0, 16, 16), d, 16, 16, new PixelRect(0, 4, 16, 8));
+        Assert.Equal(16, dst[0]);                  // the bar above: black
+        Assert.InRange(dst[4 * 16], 233, 236);     // the picture: white
+        Assert.Equal(16, dst[15 * 16 + 15]);       // the bar below: black
+        Assert.Equal(128, dst[16 * 16]);           // no colour in the bars
+    }
+
+    [Fact]
     public void AnOddSizeIsRefused() =>
         Assert.Throws<ArgumentException>(() => Convert(Solid(8, 8, 0, 0, 0), 8, 8, new PixelRect(0, 0, 8, 8), 5, 4));
 
