@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PhoneBox video crop</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; margin: 16px; min-width: 300px; color: #1f2933; }
+    label { display: block; margin-bottom: 6px; }
+    input { width: 8em; padding: 4px 6px; }
+    p { color: #52606d; max-width: 36em; }
+  </style>
+</head>
+<body>
+  <label for="port">PhoneBox agent port on this computer</label>
+  <input id="port" type="number" min="1024" max="65535" step="1">
+  <span id="saved" hidden>Saved</span>
+  <p>Leave it at 8765 unless you start the agent with <code>--port</code>. The extension only talks to
+    http://127.0.0.1 on this port, and only sends the playing video's position and the page title.</p>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -30,6 +30,36 @@ internal static class MediaService
     internal static int RateOf(WidgetConfig? widget) =>
         Math.Clamp(widget?.Int("fps") ?? DefaultFps, MinFps, MaxFps);
 
+    /// <summary>
+    /// The H.264 stream's frame rates (<c>PlayerCapture</c>'s video, a key of its own so a JPEG rate saved before does
+    /// not hold the video back): an encoder carries 30 a second for what 5 JPEG pictures cost, so that is the default.
+    /// </summary>
+    internal const int VideoMinFps = 10, VideoMaxFps = 60, VideoDefaultFps = 30;
+
+    internal static int VideoRateOf(WidgetConfig? widget) =>
+        Math.Clamp(widget?.Int("videoFps") ?? VideoDefaultFps, VideoMinFps, VideoMaxFps);
+
+    /// <summary>The largest picture the video is sent at, by the widget's quality choice (720p unless it says otherwise).</summary>
+    internal static (int Width, int Height) VideoBoxOf(WidgetConfig? widget) => widget?.Str("liveQuality") switch
+    {
+        "480" => (854, 480),
+        "1080" => (1920, 1080),
+        _ => (1280, 720),
+    };
+
+    /// <summary>Only the video, not the whole window, unless the widget asks for the window.</summary>
+    internal static bool CropsToVideo(WidgetConfig? widget) => widget?.Str("liveCrop") != "window";
+
+    /// <summary>H.264 when the phone can play it, unless the widget keeps to JPEG pictures.</summary>
+    internal static bool AllowsVideo(WidgetConfig? widget) => widget?.Str("liveCodec") != "jpeg";
+
+    /// <summary>
+    /// The bit rate for a picture size and rate: about 0.1 bit a pixel, which H.264 turns into a clean picture on a
+    /// phone-sized screen, kept between what a film needs and what Wi-Fi carries without trouble.
+    /// </summary>
+    internal static int VideoBitrate(int width, int height, int fps) =>
+        (int)Math.Clamp((long)width * height * fps / 10, 1_000_000, 12_000_000);
+
     /// <summary>What a window or track title has to contain, longest first so "youtube music" wins over "youtube".</summary>
     private static readonly (string Needle, Known Service)[] Services =
     [

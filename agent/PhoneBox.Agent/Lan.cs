@@ -100,7 +100,7 @@ public static class Lan
         || path == "/api/layout"
         || path.StartsWithSegments("/api/media") || path.StartsWithSegments("/api/volume") || path.StartsWithSegments("/api/quotas")
         // the Now playing screen widget's live video: a picture of the playing player's window, for a widget that allows it
-        || path == "/api/nowplaying/frame"
+        || path == "/api/nowplaying/frame" || path == "/api/nowplaying/video"
         // the Synced lyrics widget: the playing track's lyrics (LRCLIB is asked only for a widget with its lookup on)
         || path == "/api/lyrics" || path == "/api/wallpaper"
         || path.StartsWithSegments("/api/work") || path.StartsWithSegments("/api/procs") || path.StartsWithSegments("/api/run")

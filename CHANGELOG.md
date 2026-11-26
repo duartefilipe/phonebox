@@ -3,6 +3,22 @@
 ## Unreleased
 
 **Widgets**
+- Now playing screen: the live video is now **the video itself, smooth**, instead of a slideshow of the whole browser
+  window. The agent captures the player's window with Windows.Graphics.Capture (on the graphics card, at the player's
+  own frame rate, without making the browser repaint), **crops it to the video**, and sends it as **H.264** at 30
+  frames a second by default (10 to 60), encoded by the graphics card when it has an encoder (Intel Quick Sync, NVIDIA,
+  AMD) or by Windows' software encoder. The phone decodes it in its own video hardware (WebCodecs) and paces the frames
+  by their capture time with a small buffer that adapts to the Wi-Fi. Phones without WebCodecs, and the new
+  **Live video: format › JPEG pictures only** option, keep the JPEG pictures (now cropped too).
+  - Where the video is: an optional **browser extension** (`extras/browser-extension`, Chrome, Edge, Firefox and other
+    Chromium browsers) tells the agent exactly where the playing video is, embedded players included; without it the
+    agent crops to the part of the window that keeps moving. **Live video: what to show › The whole player window**
+    brings back the old view.
+  - New options: **what to show**, **format**, **frames a second (H.264)** and **picture size** (480p, 720p, 1080p).
+    The old rate option now applies to the JPEG pictures only.
+  - AMD's encoder with low-latency mode set both ways (codec API and attribute) wrote streams decoders could not read;
+    it is set one way only. Measured on an RX 550, an Intel UHD 630 and the software encoder: 90 of 90 frames decoded
+    with no errors.
 - Now playing screen: the live video's frames are now **evenly spaced**. The agent used to grab on its own clock
   while the panel guessed when to ask; the two beat against each other, so enough frames were made but they reached the
   phone 33 to 267 ms apart, which is seen as judder. A frame request is now held until the next frame is grabbed, so

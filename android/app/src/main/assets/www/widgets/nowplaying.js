@@ -107,11 +107,13 @@ W.nowplaying = {
     const volVal = h('span', 'np-vol-val', '--');
     const controls = h('div', 'np-controls', prev, play, next, ...(showVolume ? [h('div', 'np-vol-wrap', vol, volVal)] : []));
 
-    // The live picture sits over the backdrop and under the words, so the title stays readable on it. Two layers, as in
+    // The live picture sits over the backdrop and under the words, so the title stays readable on it. The video is
+    // drawn on a canvas (H.264 decoded by WebCodecs); the JPEG pictures, for a panel without it, use two layers as in
     // the Camera widget: the next picture is decoded in the hidden one and only then swapped in, so it never blanks.
     const liveLayers = [h('img', 'np-live'), h('img', 'np-live')];
     for (const img of liveLayers) img.alt = '';
-    const liveLayer = h('div', 'np-live-wrap', ...liveLayers);
+    const videoCanvas = h('canvas', 'np-live np-video');
+    const liveLayer = h('div', 'np-live-wrap', videoCanvas, ...liveLayers);
 
     box.classList.add('np');
     box.append(backdrop, ...(liveOn ? [liveLayer] : []),
@@ -145,6 +147,7 @@ W.nowplaying = {
     const liveClear = () => {
       liveOk = false;
       box.classList.remove('has-live');
+      videoStop();
       for (let i = 0; i < 2; i++) {
         liveLayers[i].classList.remove('on');
         liveLayers[i].removeAttribute('src');
@@ -198,13 +201,176 @@ W.nowplaying = {
       finally { clearTimeout(late); liveInflight = null; }
     };
 
+    // ---------------------------------------------------------------- H.264 video
+    // The agent sends one long response of framed messages (VideoWire.cs): a configuration, then H.264 access units as
+    // they are encoded. WebCodecs decodes them on the phone's own video hardware, and each frame is shown at the time
+    // it was captured plus a small buffer that grows when the network is uneven and shrinks when it is calm, so the
+    // motion is even rather than as jerky as the Wi-Fi. A panel without WebCodecs, or a stream that does not get
+    // through, uses the JPEG pictures above instead.
+    const videoWanted = o.liveCodec !== 'jpeg';
+    let videoBroken = !videoWanted || typeof window.VideoDecoder !== 'function' || typeof ReadableStream === 'undefined';
+    let videoStalls = 0, decoder = null, frames = [], offset = null, raf = 0, slackMin = Infinity, slackAt = 0;
+    const gl = videoCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    const BUFFER_MS = 60, MAX_BUFFER_MS = 400;
+
+    function videoStop() {
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      for (const f of frames) { try { f.close(); } catch (_) {} }
+      frames = [];
+      offset = null;
+      if (decoder) { try { decoder.close(); } catch (_) {} decoder = null; }
+      videoCanvas.classList.remove('on');
+    }
+
+    // Shows the newest frame that is due, and drops the ones it overtook. Timestamps are the capture's, in µs.
+    function present() {
+      raf = 0;
+      if (!frames.length) return;
+      const now = performance.now();
+      if (offset === null) offset = now - frames[0].timestamp / 1000 + BUFFER_MS;
+      let show = null;
+      while (frames.length && frames[0].timestamp / 1000 + offset <= now) {
+        if (show) show.close();
+        show = frames.shift();
+      }
+      if (frames.length > 12) {
+        // far behind (the phone was busy): jump to the newest instead of playing the backlog slowly
+        if (show) show.close();
+        while (frames.length > 1) frames.shift().close();
+        show = frames.shift();
+        offset = now - show.timestamp / 1000 + BUFFER_MS;
+      }
+      if (show) {
+        if (videoCanvas.width !== show.displayWidth || videoCanvas.height !== show.displayHeight) {
+          videoCanvas.width = show.displayWidth;
+          videoCanvas.height = show.displayHeight;
+        }
+        gl.drawImage(show, 0, 0, videoCanvas.width, videoCanvas.height);
+        show.close();
+        if (!liveOk) {
+          liveOk = true;
+          videoCanvas.classList.add('on');
+          for (const img of liveLayers) img.classList.remove('on');
+          box.classList.add('has-live');
+        }
+      }
+      if (frames.length) raf = requestAnimationFrame(present);
+    }
+
+    function onFrame(frame) {
+      if (!liveVisible()) { frame.close(); return; }
+      const now = performance.now();
+      if (offset !== null) {
+        // the buffer adapts: a frame that came late widens it at once; a second of comfortable margin narrows it
+        const slack = frame.timestamp / 1000 + offset - now;
+        if (slack < 0) offset = Math.min(offset - slack + 10, now - frame.timestamp / 1000 + MAX_BUFFER_MS);
+        slackMin = Math.min(slackMin, slack);
+        if (now - slackAt > 1000) {
+          if (slackMin > BUFFER_MS && slackMin !== Infinity) offset -= Math.min(20, slackMin - BUFFER_MS);
+          slackMin = Infinity;
+          slackAt = now;
+        }
+      }
+      frames.push(frame);
+      if (!raf) raf = requestAnimationFrame(present);
+    }
+
+    async function openDecoder(cfg) {
+      const base = { codec: cfg.codec, codedWidth: cfg.width, codedHeight: cfg.height, optimizeForLatency: true };
+      for (const extra of [{ hardwareAcceleration: 'prefer-hardware' }, {}]) {
+        const config = { ...base, ...extra };
+        try {
+          const ok = await VideoDecoder.isConfigSupported(config);
+          if (!ok.supported) continue;
+          const d = new VideoDecoder({ output: onFrame, error: () => { if (decoder === d) decoder = null; } });
+          d.configure(config);
+          return d;
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    // One stream, until it ends; the answer is how long to wait before the next try (as liveOne's).
+    const videoOne = async () => {
+      const ctl = new AbortController();
+      liveInflight = ctl;
+      let reader = null, gotBytes = false, waitKey = true;
+      try {
+        const r = await fetch(`${API}${relayPath(`/nowplaying/video?${wq}`)}`, { cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal });
+        if (!r.ok || !r.body) {
+          const state = await r.json().then((j) => j && j.state).catch(() => null);
+          liveClear();
+          // the widget keeps to JPEG pictures, or the computer cannot encode: the pictures it is
+          if (r.status === 409 || state === 'jpeg-only' || r.status === 404) { videoBroken = true; return 0; }
+          return r.status === 501 || r.status === 403 ? 30000 : 2000;
+        }
+        reader = r.body.getReader();
+        let buf = new Uint8Array(0);
+        while (liveVisible()) {
+          // the agent writes something at least every second; a silent stream is a stuck one (or a transport that holds
+          // the response back, in which case the pictures are the way)
+          let timer;
+          const read = await Promise.race([reader.read(), new Promise((done) => { timer = setTimeout(() => done(null), 4000); })]);
+          clearTimeout(timer);
+          if (read === null) {
+            if (!gotBytes && ++videoStalls >= 2) videoBroken = true;
+            break;
+          }
+          if (read.done) break;
+          gotBytes = true;
+          videoStalls = 0;
+          const joined = new Uint8Array(buf.length + read.value.length);
+          joined.set(buf);
+          joined.set(read.value, buf.length);
+          buf = joined;
+          let at = 0;
+          while (buf.length - at >= 16) {
+            const view = new DataView(buf.buffer, buf.byteOffset + at, 16);
+            const type = view.getUint8(0), key = (view.getUint8(1) & 1) === 1, len = view.getUint32(4, true);
+            if (buf.length - at < 16 + len) break;
+            const ts = Number(view.getBigInt64(8, true));
+            const payload = buf.subarray(at + 16, at + 16 + len);
+            at += 16 + len;
+            if (type === 1) {
+              const cfg = JSON.parse(new TextDecoder().decode(payload));
+              if (decoder) { try { decoder.close(); } catch (_) {} }
+              decoder = await openDecoder(cfg);
+              if (!decoder) { videoBroken = true; return 0; } // this phone cannot play it: the pictures instead
+              waitKey = true;
+              offset = null;
+            } else if (type === 2) {
+              if (!decoder || decoder.state !== 'configured') continue;
+              if (waitKey && !key) continue;
+              if (decoder.decodeQueueSize > 8 && !key) { waitKey = true; continue; } // the decoder is behind
+              waitKey = false;
+              decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: ts, data: payload }));
+            } else if (type === 3) {
+              const s = JSON.parse(new TextDecoder().decode(payload)).state;
+              liveClear();
+              if (s === 'no-encoder' || s === 'jpeg-only') { videoBroken = true; return 0; }
+              return s === 'off' ? 30000 : 2000;
+            }
+          }
+          buf = buf.subarray(at);
+        }
+        return liveVisible() ? 1000 : 0;
+      } catch (_) {
+        liveClear();
+        return 3000;
+      } finally {
+        liveInflight = null;
+        try { ctl.abort(); } catch (_) {}
+        if (reader) reader.cancel().catch(() => {});
+      }
+    };
+
     const liveLoop = async () => {
       if (liveRunning || !liveOn) return;
       liveRunning = true;
       try {
         while (liveVisible()) {
           const started = Date.now();
-          const wait = await liveOne();
+          const wait = await (videoBroken ? liveOne() : videoOne());
           if (!liveVisible()) break;
           await new Promise((done) => setTimeout(done, Math.max(0, wait - (Date.now() - started))));
         }

@@ -311,6 +311,13 @@ app.Use(async (ctx, next) =>
     else
     {
         var host = ctx.Request.Host.Host;
+        // the browser extension reports where the video is: its origin is its own, not the settings page's
+        if (VideoReports.IsExtensionRequest(ctx.Request.Method, ctx.Request.Path, origin) && (host == "127.0.0.1" || host == "localhost"))
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            await next();
+            return;
+        }
         var spotifyCallback = ctx.Request.Method == "GET" && ctx.Request.Path == "/api/controls/spotify/callback"
             && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]);
         if ((host != "127.0.0.1" && host != "localhost") || (origin != "" && !SameOrigins.Contains(origin))
@@ -1204,6 +1211,44 @@ app.MapGet("/api/nowplaying/frame", async (string? widget, string? fresh, HttpRe
     await Task.CompletedTask;
     return Results.Json(new { state = "unsupported" }, statusCode: 501);
 #endif
+});
+
+// The same video as H.264, for a panel that can decode it (WebCodecs): one long response of framed messages
+// (VideoWire), cropped to the video, at the widget's rate. Same rules as the pictures above; the stream ends when the
+// widget may no longer have it, and the panel falls back to the pictures when it cannot play it.
+app.MapGet("/api/nowplaying/video", async (string? widget, HttpContext ctx, ConfigStore cfg, MediaMonitor media,
+    ControlDeck deck, IServiceProvider sp, CancellationToken ct) =>
+{
+#if WINDOWS
+    var capture = sp.GetRequiredService<PlayerCapture>();
+    await capture.StreamAsync(ctx, cfg.Get, () => deck.EffectiveMedia(media.Snapshot()),
+        ctx.Request.Headers["X-PhoneBox-Device"].ToString(), widget, ct);
+#else
+    ctx.Response.StatusCode = 501;
+    await ctx.Response.WriteAsJsonAsync(new { state = "unsupported" }, ct);
+#endif
+});
+
+// The PhoneBox browser extension (extras/browser-extension) says where the playing video is in its tab, so the live
+// video shows the video alone. From this computer only (the local port), and only from an extension: the request
+// guard lets this one path through for an extension's origin (Program's middleware, VideoReports.IsExtensionOrigin).
+app.MapPost("/api/nowplaying/rect", async (HttpRequest req, CancellationToken ct) =>
+{
+    if (req.ContentLength is > 4096) return Results.StatusCode(413);
+    try
+    {
+        using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body, cancellationToken: ct);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("gone", out var gone) && gone.ValueKind == JsonValueKind.String)
+        {
+            VideoReports.Remove(gone.GetString() ?? "");
+            return Results.NoContent();
+        }
+        if (VideoReports.Parse(root, Environment.TickCount64) is not { } report) return Results.BadRequest();
+        VideoReports.Add(report);
+        return Results.NoContent();
+    }
+    catch (System.Text.Json.JsonException) { return Results.BadRequest(); }
 });
 
 // A Now playing or Synced lyrics widget on screen asks every few seconds: the agent reads the players every second
