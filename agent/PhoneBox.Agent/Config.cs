@@ -1286,6 +1286,31 @@ public sealed partial class ConfigStore(string path)
         Save(JsonSerializer.Serialize(c, WriteOpts), version);
     }
 
+    /// <summary>
+    /// Replaces the pages (and the home page, when the layout names one) with the ones a hub sent, and records the
+    /// layout both sides now hold, so the next sync can tell which side changed. Everything else is left alone: a
+    /// computer's own calendars, keys, shortcuts and cameras are not part of a layout. Returns an error, or null.
+    /// </summary>
+    public string? SaveLayout(Layout.Payload layout)
+    {
+        var copy = JsonSerializer.Deserialize<AgentConfig>(JsonSerializer.Serialize(Get(), WriteOpts), ReadOpts)!;
+        copy.Pages = layout.Pages;
+        if (layout.HomePage is not null) copy.Display.HomePage = layout.HomePage;
+        // the hash of the layout as this agent stores it, which is what the hub will read back and compare
+        var normalized = Normalize(JsonSerializer.Deserialize<AgentConfig>(JsonSerializer.Serialize(copy, WriteOpts), ReadOpts)!);
+        copy.Hub.LayoutHash = Layout.Hash(normalized);
+        return Save(JsonSerializer.Serialize(copy, WriteOpts));
+    }
+
+    /// <summary>Records the layout the hub and its computers now agree on, without touching the pages themselves.</summary>
+    public string? MarkLayoutSynced(string? hubHash, Action<HubConfig>? sources = null)
+    {
+        var copy = JsonSerializer.Deserialize<AgentConfig>(JsonSerializer.Serialize(Get(), WriteOpts), ReadOpts)!;
+        copy.Hub.LayoutHash = hubHash;
+        sources?.Invoke(copy.Hub);
+        return Save(JsonSerializer.Serialize(copy, WriteOpts));
+    }
+
     /// <summary>Hub mode: the phones only connect over Wi-Fi, so its option is turned on (and saved) at start.</summary>
     public void EnableLan()
     {

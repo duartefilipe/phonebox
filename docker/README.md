@@ -58,6 +58,17 @@ No hub, em **Geral › Wi-Fi e Tailscale › Parear um celular por Wi-Fi**, esca
   - Uma página marcada para "**PC X desligado**" substitui as páginas do PC X enquanto ele estiver desligado.
   - Widgets de um PC desligado, sem página própria, aparecem esmaecidos com o aviso.
 
+## 5. Um só layout no hub e nos PCs
+
+Ligado por padrão em **Geral › Computadores › "Manter um só layout no hub e nos computadores"**. As páginas ficam
+iguais em todo lugar: edite no hub ou nas configurações do próprio PC e, em segundos, o outro lado acompanha. Alteradas
+nos dois ao mesmo tempo, valem as páginas do hub.
+
+- Viajam só as **páginas** e a **página inicial**. Agendas, atalhos, câmeras, chaves de Wi-Fi, Home Assistant e tudo o
+  mais continuam de cada máquina.
+- Um PC desligado é atualizado quando voltar a responder.
+- Desligue a opção para cada máquina ter o seu próprio layout, como antes.
+
 ## Celular com cabo ligado num PC
 
 Com o hub, o cabo pode servir só de energia. O hub diz aos celulares que o cabo **não** vence (a opção geral "o cabo
@@ -69,7 +80,8 @@ quando a página "PC desligado" fica acesa a noite toda. Sem energia, a bateria 
 
 ## O que passa pelo hub
 
-Métricas, mídia, volume, processos, OBS, Discord, apps e sessões de IA de cada PC chegam pelo hub. Casa (Home Assistant),
+Métricas, mídia, volume, processos, OBS, Discord, apps e sessões de IA de cada PC chegam pelo hub — inclusive na
+prévia ao vivo do editor de páginas do hub, que usa o mesmo caminho do celular. Casa (Home Assistant),
 clima, agenda, feeds, câmeras, fotos, atalhos e regras ficam no próprio hub.
 
 Ainda não funcionam através do hub: trackpad, teclas e atalhos que rodam comandos no PC, ditado, console de apps e

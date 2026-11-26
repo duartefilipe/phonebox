@@ -95,7 +95,12 @@ public static class Lan
         || path == "/api/controls/plex/state" || path.StartsWithSegments("/api/controls/plex/action")
         || path == "/api/controls/state" || path == "/api/controls/listen" || path.StartsWithSegments("/api/controls/radio-logo") || path.StartsWithSegments("/api/controls/command") || path.StartsWithSegments("/api/controls/obs")
         || path.StartsWithSegments("/api/state") || path.StartsWithSegments("/api/config") || path.StartsWithSegments("/api/art")
+        // the one layout a hub keeps across its computers (Layout): read and written by a hub with this computer's
+        // paired key, never by a phone, and never forwarded through a hub (see HubSources.Forwardable)
+        || path == "/api/layout"
         || path.StartsWithSegments("/api/media") || path.StartsWithSegments("/api/volume") || path.StartsWithSegments("/api/quotas")
+        // the Now playing screen widget's live video: a picture of the playing player's window, for a widget that allows it
+        || path == "/api/nowplaying/frame"
         // the Synced lyrics widget: the playing track's lyrics (LRCLIB is asked only for a widget with its lookup on)
         || path == "/api/lyrics" || path == "/api/wallpaper"
         || path.StartsWithSegments("/api/work") || path.StartsWithSegments("/api/procs") || path.StartsWithSegments("/api/run")

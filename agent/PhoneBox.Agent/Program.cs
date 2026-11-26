@@ -84,6 +84,10 @@ builder.Services.AddSingleton<HomeAssistant>();
 builder.Services.AddSingleton<AppConsole>();
 builder.Services.AddSingleton<Dictation>();
 builder.Services.AddSingleton<SpectrumAnalyzer>();
+#if WINDOWS
+// the Now playing screen widget's live video: the player's own window, only while a widget asks for it
+builder.Services.AddSingleton<PlayerCapture>();
+#endif
 AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
 AddMonitor<QuotaMonitor>(builder.Services);
@@ -1093,6 +1097,26 @@ app.MapGet("/api/config", (ConfigStore cfg, HttpRequest req, ShortcutIconUploads
     Results.Json(new { version = cfg.Version.ToString(), config = cfg.Get().ToPublic(req.Headers["X-PhoneBox-Device"].ToString(),
         s => icons.Revision(s.Id) is { } up ? (up, true) : (ShortcutIcons.Revision(s), false), wallpaper.Revision(), HubMode.Enabled) }));
 
+// ---------------------------------------------------------------- one layout across the hub and its computers (Layout)
+// Only a hub asks for these, over Wi-Fi with this computer's paired key (Lan.AllowedOverLan): the pages as they are
+// here, and the pages the hub wants here instead. A phone never calls them — it reads /api/config.
+app.MapGet("/api/layout", (ConfigStore cfg) =>
+{
+    var c = cfg.Get();
+    var layout = Layout.Of(c);
+    return Results.Json(new { hash = Layout.Hash(layout), synced = c.Hub.LayoutHash, layout });
+});
+app.MapPut("/api/layout", async (HttpRequest req, ConfigStore cfg, ILogger<Program> log) =>
+{
+    if (req.ContentLength is > Layout.MaxBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    using var reader = new StreamReader(req.Body);
+    if (Layout.Read(await reader.ReadToEndAsync()) is not { } layout) return Results.BadRequest(new { error = "not a layout" });
+    if (cfg.SaveLayout(layout) is { } error) return Results.BadRequest(new { error });
+    log.LogInformation("layout: the hub's pages applied here ({Pages} pages)", layout.Pages.Count);
+    StateSignal.Poke(); // the phones on this computer load the new pages at once
+    return Results.Json(new { ok = true, hash = Layout.Hash(cfg.Get()) });
+});
+
 // The panel's wallpaper (Settings › Display). The panel asks with ?v=<revision>, so the picture may be kept for good.
 app.MapGet("/api/wallpaper", (WallpaperStore wallpaper, HttpResponse res, string? v) =>
 {
@@ -1159,6 +1183,25 @@ app.MapGet("/api/phones", (ConfigStore cfg) =>
 
 app.MapGet("/api/art", (MediaMonitor media) =>
     media.Art is { } art ? Results.File(art.Bytes, art.Mime) : Results.NotFound());
+
+// The Now playing screen widget's live video: the picture of the window of the player that is playing, as a JPEG.
+// Only for a widget of that type on an enabled page this phone shows, with its own "Live video" on; the capture starts
+// with these requests and stops a few seconds after the last one. Windows only; elsewhere the widget keeps the cover.
+app.MapGet("/api/nowplaying/frame", (string? widget, string? fresh, HttpRequest req, HttpResponse res,
+    ConfigStore cfg, MediaMonitor media, ControlDeck deck, IServiceProvider sp) =>
+{
+    res.Headers.CacheControl = "no-store";
+    res.Headers.XContentTypeOptions = "nosniff";
+#if WINDOWS
+    var capture = sp.GetRequiredService<PlayerCapture>();
+    var (status, jpeg, state) = capture.Frame(cfg.Get(), deck.EffectiveMedia(media.Snapshot()),
+        req.Headers["X-PhoneBox-Device"].ToString(), widget, fresh is "true" or "1");
+    if (status == 204) return Results.NoContent(); // this widget already has the newest picture
+    return jpeg is null ? Results.Json(new { state }, statusCode: status) : Results.Bytes(jpeg, "image/jpeg");
+#else
+    return Results.Json(new { state = "unsupported" }, statusCode: 501);
+#endif
+});
 
 // A Now playing or Synced lyrics widget on screen asks every few seconds: the agent reads the players every second
 // only while one does (on macOS each reading starts nowplaying-cli, #523)

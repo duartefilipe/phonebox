@@ -31,6 +31,10 @@ iniciado pela pasta Inicializar do Windows.
 | **Um computador por celular, escolhido no hub**: em **Geral › Celulares › "Computador que este celular mostra"** (`phones[].source`), cada aparelho vê um PC diferente com as mesmas páginas. O hub manda a lista de computadores com o escolhido primeiro, e o painel já usa o primeiro para página/widget que não nomeia nenhum. | `Config.cs` (`PhoneConfig.Source`, `SourcesFor`, `ToPublic`), `settings.html`, testes em `ConfigTests.cs` |
 | **"Assumir o celular pelo cabo" virou opção** (`display.usbTakeOver`, ligada por padrão): desligada, o agente não monta o túnel USB, não entrega a chave, não acorda a tela nem abre o painel — o cabo só carrega e o celular continua no painel do hub. Perde-se trackpad, ditado e microfone do celular, que dependem do cabo. | `AdbReverse.cs` (`Ensure`, chama `RemoveOwnRulesAsync` ao desligar), `Config.cs` (`DisplayConfig.UsbTakeOver`), `settings.html`, `config.default*.json`, testes em `ConfigTests.cs` |
 | **Comandos de instalação documentados**: o que instalar em cada máquina (só o agente num PC lido pelo hub, o hub no Docker, o hub sem Docker, agente e hub no mesmo PC, e o app no celular pelo `adb`), em `docs/SETUP.md` › "Which pieces to install where". As URLs de instalação do `SETUP.md` passaram a apontar para `duartefilipe/phonebox` (só os links de issues seguem no upstream). | `docs/SETUP.md` |
+| **Um só layout no hub e nos PCs** (`hub.syncLayout`, ligado): as páginas ficam iguais em todo lugar. Editar no hub manda para cada PC; editar no PC é adotado pelo hub e repassado aos outros. A decisão é contra o layout do último acordo (`hub.layoutHash` e `hub.sources[].layoutHash`), então "mudou" quer dizer "mudou desde o último sync"; mudando nos dois ao mesmo tempo, vence o hub. Só páginas e página inicial viajam — agendas, atalhos, câmeras e chaves de cada PC ficam onde estão. | `agent/PhoneBox.Agent/LayoutSync.cs`, `Hub.cs` (`SyncLayoutAsync`, `ReadLayoutAsync`), `Config.cs` (`SaveLayout`, `MarkLayoutSynced`, `HubConfig.SyncLayout`), `Program.cs` (`GET`/`PUT /api/layout`), `Lan.cs`, `settings.html` (Geral › Computadores), testes em `LayoutSyncTests.cs` |
+| **Vídeo ao vivo no widget** (Windows, ligado por padrão): em vez da capa parada, o widget mostra a **imagem da janela do player**, em movimento — filme, episódio ou vídeo, com título e controles por cima. 5 imagens por segundo por padrão (medido ~9% de um núcleo; 15 fps custou 71%), 1 a 15 nas opções. Só captura enquanto uma página com o widget está na tela do celular e, por padrão, só enquanto algo toca. Copia **só a janela do player**, nunca a tela inteira. Descoberta importante: o **Netflix não sai preto** nesta máquina — o DRM não bloqueou a captura. | `agent/PhoneBox.Agent/PlayerCapture.cs` (captura e escolha da janela), `Program.cs` (`GET /api/nowplaying/frame`), `Lan.cs`, `widgets.json`, `nowplaying.js` (camadas duplas), `style.css`, `MainActivity.kt` (lista de imagens do proxy), testes em `PlayerCaptureTests.cs` |
+| **Widget "Tela do que está tocando"** (`nowplaying`): página inteira com a capa ao fundo (desfocada), logo e cor do serviço (Netflix, YouTube, HBO Max, Disney+, Prime Video, Globoplay, Twitch, Plex…), título, barra de posição e controles. Também funciona em cartão médio: capa, barra e volume saem de cena por vez. | `android/.../www/widgets/nowplaying.js`, `style.css`, entrada em `widgets.json`, traduções em `i18n.js` e `locale-existing.js` |
+| **O serviço por trás do que toca**: o Windows informa só `app=Chrome, title=Netflix`, que não diz o episódio. O agente reconhece o serviço pelo nome do player, pelo título da faixa e, para um navegador, pelos **títulos das janelas** — e escolhe a janela que nomeia o serviço em jogo (pegar "a mais longa" mostrava YouTube numa sessão do Netflix). Campos novos: `service`, `serviceName`, `showTitle`. | `agent/PhoneBox.Agent/MediaService.cs`, `MediaWindowTitle.cs` (Windows), `Models.cs`, `MediaMonitor.cs`, `Unix/MediaMonitor.cs`, testes em `MediaServiceTests.cs` |
 | **Só três idiomas** (inglês, espanhol e português do Brasil): os outros 20 saíram do painel, das configurações, dos recursos do Android e do ícone da bandeja, junto com o suporte a escrita da direita para a esquerda (só o árabe o usava). `i18n.js` caiu de ~1 MB para ~270 kB e o pacote de traduções de ~1,1 MB para ~130 kB. | `android/.../www/i18n.js`, `locale-existing.js` (único pacote restante), `index.html` e `settings.html` (uma tag `<script>` de idioma), `res/values-*`, `res/xml/locales_config.xml`, `TrayStrings.*.resx`, `Config.cs` (`DisplayConfig.Languages`), `PhoneBox.Agent.csproj`, `style.css` e `settings.html` (regras `[dir="rtl"]` removidas) |
 
 ## Pendente
@@ -73,6 +77,19 @@ a `Stop-Process`. As configurações já iam para o disco a cada salvamento, mas
 de energia (ou um encerramento forçado logo depois de salvar) podia deixar o `config.json` vazio, e o agente subia com
 os padrões — perdendo agendas, Wi-Fi e o pareamento com o hub. Desde 26/11/2026 o salvamento vai até o disco, o agente
 lê o `config.json.bak` quando o arquivo principal está danificado, e o certificado do Wi-Fi é gravado do mesmo jeito.
+
+### Resolvido: a tela do hub não batia com a do agente, e a mídia não respondia no hub
+
+Duas causas, não uma:
+
+1. **As páginas eram arquivos separados.** O `config.json` do agente do Windows e o do hub (no volume `phonebox-data`)
+   são independentes, então cada um tinha as suas páginas. Agora existe o sync de layout (acima): editar em qualquer um
+   dos lados deixa os dois iguais em segundos.
+2. **A prévia ao vivo do editor do hub lia o próprio container.** O `sendPreview` mandava o `config` cru do arquivo, que
+   tem `hub.sources` mas não a chave `sources` que o painel usa (`main.js`, `hubSources()` / `inHub()`). Com `inHub()`
+   falso, a prévia não fazia o relay `/api/src/<id>/…` e pedia mídia e volume ao **hub**, que não toca nada e não tem
+   placa de som — daí "nada tocando" e o volume em `n/a`, enquanto no celular funcionava. Agora a prévia recebe a lista
+   de computadores (só id e nome; as chaves ficam no servidor) e usa o mesmo caminho do celular.
 
 ### Resolvido: o celular se repareava sozinho com o PC do cabo
 
@@ -156,6 +173,14 @@ celular.
   falhar com "protocol fault"; repetir após alguns segundos resolve.
 - No PowerShell, `adb exec-out screencap -p > arquivo.png` corrompe a imagem (o redirecionamento grava texto). Use o
   Git Bash para capturar a tela.
+- Nunca escreva o `config.json` com `Set-Content`, `Out-File` ou `>` do Windows PowerShell 5.1: o padrão deles é ANSI
+  (CP1252), que troca **cada unidade UTF-16** dos emojis por um `?` literal — foi assim que os ícones das páginas e dos
+  atalhos viraram `??` e `???` (🏠 tem 2 unidades, 🎛️ tem 3). O arquivo continua um JSON válido, então nada reclama, e o
+  reparo do agente (`IconText`) não pega esse caso: ele só conhece as formas de mojibake que ainda têm os bytes
+  originais, e um `?` perdeu a informação para sempre. Prefira a API (`PUT /api/settings` com
+  `charset=utf-8`) ou, se for mexer no arquivo, `[System.IO.File]::WriteAllText($p, $texto, [System.Text.Encoding]::UTF8)`.
+  Para conferir: `([System.IO.File]::ReadAllBytes($p) | Where-Object { $_ -gt 127 }).Count` — os emojis são gravados
+  como escapes `\uD83C\uDFE0`, então o esperado é 0 bytes não-ASCII **com** os ícones aparecendo certos na página.
 - A WebView de sistema do LineageOS (Chromium 88) não entende as unidades `cq*` (container queries): capas e textos
   dos widgets somem ou se sobrepõem. O celular precisa da WebView do Google (Play Store) selecionada com
   `adb shell cmd webviewupdate set-webview-implementation com.google.android.webview`.

@@ -46,6 +46,7 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
             if (_mgr is not null) _mgr.CurrentSessionChanged -= SessionChanged;
             Observe(null);
             _art.Clear();
+            MediaWindowTitle.Reset();
         }
     }
 
@@ -108,8 +109,11 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
         if (dur > TimeSpan.Zero && pos > dur) pos = dur;
         if (pos < TimeSpan.Zero) pos = TimeSpan.Zero;
 
-        _snap = new MediaSnapshot(
-            App: MediaAppName.Friendly(s.SourceAppUserModelId),
+        var app = MediaAppName.Friendly(s.SourceAppUserModelId);
+        // the Now playing screen widget: which service is playing, and the episode's name when the browser's window
+        // knows it and the player does not (every Netflix episode is reported as just "Netflix")
+        _snap = MediaService.Enrich(new MediaSnapshot(
+            App: app,
             Title: props.Title ?? "",
             Artist: props.Artist ?? "",
             Album: props.AlbumTitle ?? "",
@@ -117,7 +121,7 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
             PosMs: (long)pos.TotalMilliseconds,
             DurMs: (long)Math.Max(0, dur.TotalMilliseconds),
             ArtId: Art is null ? 0 : _art.Id,
-            CanSeek: pb.Controls.IsPlaybackPositionEnabled) { SampledAt = sampledAt };
+            CanSeek: pb.Controls.IsPlaybackPositionEnabled) { SampledAt = sampledAt }, MediaWindowTitle.For(app));
     }
 
     public async Task<bool> Control(string action, long? ms)

@@ -17,11 +17,26 @@ public sealed class HubSource
     public int Port { get; set; } = 8766;
     /// <summary>The computer's Wi-Fi key; never sent to a phone.</summary>
     public string Token { get; set; } = "";
+    /// <summary>
+    /// The layout this computer and the hub last agreed on (<see cref="Layout.Hash"/>), so the next sync can tell which
+    /// side changed. Null until they have synced once.
+    /// </summary>
+    public string? LayoutHash { get; set; }
 }
 
 public sealed class HubConfig
 {
     public List<HubSource> Sources { get; set; } = [];
+
+    /// <summary>
+    /// Keep one layout across the hub and its computers: a change in the hub's pages reaches every computer, and a
+    /// change made on a computer is taken up by the hub and passed on to the others. On by default; with changes on
+    /// both sides since the last sync the hub's win.
+    /// </summary>
+    public bool SyncLayout { get; set; } = true;
+
+    /// <summary>The hub's own layout as it was at the last sync (<see cref="Layout.Hash"/>); null before the first.</summary>
+    public string? LayoutHash { get; set; }
 }
 
 /// <summary>
@@ -149,13 +164,117 @@ public sealed class HubSources(ConfigStore config, ILogger<HubSources> log) : Ba
     {
         if (!HubMode.Enabled) return;
         log.LogInformation("hub mode: reading the paired computers");
+        var layoutDue = 0L;
         while (!ct.IsCancellationRequested)
         {
             var sources = config.Get().Hub.Sources;
             foreach (var gone in _live.Keys.Except(sources.Select(s => s.Id)).ToList()) _live.TryRemove(gone, out _);
             await Task.WhenAll(sources.Select(s => PollAsync(s, ct)));
+            // the one layout across the hub and its computers: a few seconds apart, not with every state
+            if (Environment.TickCount64 >= layoutDue)
+            {
+                layoutDue = Environment.TickCount64 + LayoutEveryMs;
+                try { await SyncLayoutAsync(ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+                catch (Exception ex) { log.LogDebug("layout sync: {Msg}", ex.Message); }
+            }
             try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { return; }
         }
+    }
+
+    /// <summary>How often the layouts are compared.</summary>
+    internal const int LayoutEveryMs = 5000;
+
+    /// <summary>
+    /// Keeps one layout on the hub and on every computer that answers (Settings › Computers, on by default). Which
+    /// side changed is decided against the layout they last agreed on; with changes on both sides the hub's win, and
+    /// a computer that is off is simply caught up the next time it answers.
+    /// </summary>
+    private async Task SyncLayoutAsync(CancellationToken ct)
+    {
+        var cfg = config.Get();
+        if (!cfg.Hub.SyncLayout || cfg.Hub.Sources.Count == 0) return;
+        var hubHash = Layout.Hash(cfg);
+        var agreed = cfg.Hub.LayoutHash;
+        var hubChanged = agreed is null || agreed != hubHash;
+
+        // a computer whose own pages changed since the last sync becomes the layout for everyone — unless the hub's
+        // changed too, in which case the hub's stand and that computer is written over
+        if (!hubChanged)
+        {
+            foreach (var source in cfg.Hub.Sources)
+            {
+                if (_live.GetValueOrDefault(source.Id)?.Online != true) continue;
+                if (await ReadLayoutAsync(source, ct) is not { } read || read.Hash == source.LayoutHash) continue;
+                if (config.SaveLayout(read.Layout) is { } error) { log.LogWarning("layout from {Name}: {Error}", source.Name, error); continue; }
+                log.LogInformation("layout: {Name}'s pages taken up by the hub", source.Name);
+                // the hub now holds that computer's layout: the loop below sends it on to the others
+                cfg = config.Get();
+                hubHash = Layout.Hash(cfg);
+                // that computer already has these very pages, so it is marked as agreeing with its own hash
+                await MarkAsync(source.Id, read.Hash, hubHash, ct);
+                StateSignal.Poke();
+                break;
+            }
+            cfg = config.Get();
+            hubHash = Layout.Hash(cfg);
+        }
+
+        var payload = Layout.Of(cfg);
+        var body = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload, Layout.Opts));
+        foreach (var source in cfg.Hub.Sources)
+        {
+            if (_live.GetValueOrDefault(source.Id)?.Online != true) continue;
+            if (await ReadLayoutAsync(source, ct) is not { } read) continue;
+            // already the same pages: only the agreed hashes need recording
+            if (read.Hash == hubHash) { if (source.LayoutHash != read.Hash) await MarkAsync(source.Id, read.Hash, hubHash, ct); continue; }
+            using var reply = await SendAsync(source, _live.GetValueOrDefault(source.Id), HttpMethod.Put, "/api/layout",
+                body, "application/json; charset=utf-8", TimeSpan.FromSeconds(15), ct);
+            if (reply is null || !reply.IsSuccessStatusCode)
+            {
+                log.LogDebug("layout: {Name} did not take the pages ({Status})", source.Name, reply?.StatusCode.ToString() ?? "no answer");
+                continue;
+            }
+            // the hash the computer reports after storing them: its own normalization may differ in some detail, and
+            // what matters is that the next pass does not read that as a change made there
+            string? stored = null;
+            try { stored = JsonDocument.Parse(await reply.Content.ReadAsStringAsync(ct)).RootElement.TryGetProperty("hash", out var h) ? h.GetString() : null; }
+            catch (Exception) { /* an older agent answers without a hash: the next read settles it */ }
+            log.LogInformation("layout: the hub's pages sent to {Name}", source.Name);
+            await MarkAsync(source.Id, stored, hubHash, ct);
+        }
+        if (config.Get().Hub.LayoutHash != hubHash) config.MarkLayoutSynced(hubHash);
+    }
+
+    private sealed record LayoutRead(string Hash, Layout.Payload Layout);
+
+    /// <summary>A computer's pages as it holds them now, or null when it did not answer with a layout.</summary>
+    private async Task<LayoutRead?> ReadLayoutAsync(HubSource source, CancellationToken ct)
+    {
+        using var reply = await SendAsync(source, _live.GetValueOrDefault(source.Id), HttpMethod.Get, "/api/layout",
+            null, null, TimeSpan.FromSeconds(5), ct);
+        if (reply is null || !reply.IsSuccessStatusCode) return null;
+        var text = await reply.Content.ReadAsStringAsync(ct);
+        if (text.Length > Layout.MaxBytes) return null;
+        try
+        {
+            var root = JsonDocument.Parse(text).RootElement;
+            if (!root.TryGetProperty("hash", out var hash) || hash.GetString() is not { Length: > 0 } hashText) return null;
+            if (!root.TryGetProperty("layout", out var layout)) return null;
+            return Layout.Read(layout.GetRawText()) is { } read ? new LayoutRead(hashText, read) : null;
+        }
+        catch (JsonException) { return null; } // an agent without the layout endpoint
+    }
+
+    /// <summary>Records what a computer and the hub now agree on, in one save.</summary>
+    private Task MarkAsync(string id, string? sourceHash, string hubHash, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (config.MarkLayoutSynced(hubHash, hub =>
+        {
+            if (hub.Sources.FirstOrDefault(s => s.Id == id) is { } stored) stored.LayoutHash = sourceHash;
+        }) is { } error) log.LogDebug("layout: could not record the sync ({Error})", error);
+        return Task.CompletedTask;
     }
 
     private async Task PollAsync(HubSource source, CancellationToken ct)
@@ -237,7 +356,9 @@ public sealed class HubSources(ConfigStore config, ILogger<HubSources> log) : Ba
     public static bool Forwardable(string method, PathString path) =>
         method is "GET" or "POST" && Lan.AllowedOverLan(path) && !Lan.IsWebhook(path)
         && !path.StartsWithSegments("/api/stream") && !path.StartsWithSegments("/api/trackpad") && !path.StartsWithSegments("/api/src")
-        && !path.StartsWithSegments("/api/pair") && !path.StartsWithSegments("/api/config") && !path.StartsWithSegments("/api/state");
+        && !path.StartsWithSegments("/api/pair") && !path.StartsWithSegments("/api/config") && !path.StartsWithSegments("/api/state")
+        // the layout is the hub's own business with each computer (Layout), not something a phone may ask it to relay
+        && path != "/api/layout";
 
     public const int MaxForwardBody = 64 * 1024;
 

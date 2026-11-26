@@ -939,6 +939,8 @@ nav a.on::before { color: var(--accent); }
         <p class="hint" style="margin:0 0 12px" data-i18n="s.hub.lead">This agent runs as a hub: the phones show the computers added here. On each computer, open General › Wi-Fi &amp; Tailscale, choose Pair a phone over Wi-Fi, copy the pairing link and paste it below.</p>
         <div id="hubList"></div>
         <div class="row" style="margin-top:10px"><input type="text" id="hubLink" data-i18n-placeholder="s.hub.link" placeholder="Pairing link" spellcheck="false" autocomplete="off" style="flex:1"><button class="btn primary" id="hubAdd" data-i18n="s.hub.add">Add computer</button></div>
+        <div class="row" style="margin-top:14px"><label class="switch"><input type="checkbox" data-bind="hub.syncLayout"><span></span></label> <span data-i18n="s.hub.syncLayout">Keep one layout on the hub and its computers</span></div>
+        <p class="hint" style="margin:6px 0 0" data-i18n="s.hub.syncLayoutHint">The pages are the same everywhere: edit them here or in a computer's own settings and the change reaches the others within seconds. Changed in both places at once, the hub's pages win. Only the pages and the home page travel — each computer keeps its own calendars, shortcuts, cameras and keys.</p>
       </div>
       <div class="card">
         <h3 data-i18n="s.updates.title">Updates</h3>
@@ -1545,6 +1547,12 @@ function sendPreview() {
   // the settings file has no wallpaper revision (the agent adds it for the phone): the preview gets the picture shown
   // here, so the darkening and blur being edited can be seen on it
   config.wallpaperRev = wallpaperShown;
+  // Hub mode: the panel knows the computers through the public "sources" list the agent builds for a phone
+  // (AgentConfig.ToPublic), not through the settings file's own hub.sources. Without it the preview reads the hub's
+  // own machine — no player and no audio device — so Now playing and the volume stayed empty while the phone's panel
+  // worked. The keys stay here: only each computer's id and name are passed on.
+  delete config.hub;
+  if (hubOn()) config.sources = hubInfo.sources.map((s) => ({ id: s.id, name: s.name }));
   if (previewFrame && previewReady && stageMode === 'live')
     previewFrame.contentWindow.postMessage({ type: 'phonebox-preview', config, page: selPage }, location.origin);
   if (appearancePreviewFrame && appearancePreviewReady)

@@ -20,6 +20,7 @@ import './widgets/camera.js';
 import './widgets/spectrum.js';
 import './widgets/steam-library.js';
 import './widgets/lyrics.js';
+import './widgets/nowplaying.js';
 
 // PhoneBox desk panel. Pages are grids of widgets, designed in the agent's settings page.
 // A phone is 12 × 6. A tablet keeps the 12 columns and adds rows, so the page holds more widgets.
@@ -183,7 +184,7 @@ function trackSourceEvents(box, ctx) {
   for (const type of ['pointerdown', 'pointerup', 'click', 'input', 'change', 'keydown']) box.addEventListener(type, mark, true);
 }
 const RELAYED = ['/media', '/volume', '/art', '/procs', '/quotas', '/work', '/controls', '/obs', '/discord', '/spectrum', '/lyrics',
-  '/apps', '/console', '/dictate', '/steam', '/batteries', '/approvals'];
+  '/apps', '/console', '/dictate', '/steam', '/batteries', '/approvals', '/nowplaying'];
 /** In hub mode, a path for computer data goes to the computer in play: the widget's, else the page's on screen, else the first. */
 export function relayPath(path) {
   if (!inHub() || !RELAYED.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'))) return path;

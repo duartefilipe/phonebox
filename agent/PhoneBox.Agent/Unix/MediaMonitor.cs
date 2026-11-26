@@ -116,7 +116,8 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
             if (snap is null) { _snap = null; Art = null; _macArtKey = ""; _macArtEncoded = ""; _macPositionKey = ""; _artUrl = ""; return; }
             if (_macSystemMedia)
             {
-                _snap = snap with { ArtId = Art is null ? 0 : _artId, SampledAt = sampledAt };
+                // the Now playing screen widget's service logo; no window titles are read here (Windows only)
+                _snap = MediaService.Enrich(snap with { ArtId = Art is null ? 0 : _artId, SampledAt = sampledAt });
                 return;
             }
             if (_macArtKey.Length > 0) { _macArtKey = ""; _macArtEncoded = ""; _artUrl = "\0"; }
@@ -127,7 +128,7 @@ public sealed class MediaMonitor(ILogger<MediaMonitor> log) : BackgroundService
                 if (loaded is null) Art = null;
                 else if (Art is null || Art.Mime != loaded.Mime || !Art.Bytes.AsSpan().SequenceEqual(loaded.Bytes)) { Art = loaded; _artId++; }
             }
-            _snap = snap with { ArtId = Art is null ? 0 : _artId, SampledAt = sampledAt };
+            _snap = MediaService.Enrich(snap with { ArtId = Art is null ? 0 : _artId, SampledAt = sampledAt });
         }
         finally
         {

@@ -3,6 +3,16 @@
 ## Unreleased
 
 **Widgets**
+- Now playing screen: **live video** (Windows, on by default). Instead of the cover art the widget shows the picture of
+  the window the player is playing in — a film, an episode or a video, moving, with the title and the controls over it.
+  Five pictures a second by default (about 9% of one core here; 1 to 15 in the widget's options), captured only while a
+  page with the widget is on the phone's screen and, unless you turn that off, only while something is playing. Only
+  that one window is copied, never the whole screen. See PRIVACY.md.
+- A **Now playing screen** widget: what is playing on the computer, made for a page of its own — the cover filling the
+  background, blurred and darkened, the streaming service's own logo and colour (Netflix, YouTube, YouTube Music, HBO
+  Max, Disney+, Prime Video, Apple TV+, Paramount+, Globoplay, Crunchyroll, Twitch, Spotify, SoundCloud, Deezer, Tidal,
+  Vimeo, Plex and PhoneBox's own Internet Radio), the title, a position bar you can seek on, the playback buttons and
+  the volume. It reflows down to a medium or small card, where the cover, the bar and the volume step aside in turn.
 - Discord on Windows: **Choose on PC** (screen share) brings Discord's window to the front. Discord draws its picker
   inside its own window, so with Discord minimized, behind other windows or in the tray the button seemed to do
   nothing. With more than one Discord build running (stable, PTB, Canary), the one PhoneBox is connected to comes
@@ -44,6 +54,18 @@
   Apple Music now shows as "Apple Music" instead of "AppleInc" (#557).
 
 **Agent**
+- Hub mode: **one layout on the hub and its computers** (Settings › General › Computers, on by default). The pages are
+  the same everywhere — edit them on the hub or in a computer's own settings and the change reaches the others within
+  seconds. Which side changed is decided against the layout they last agreed on, and with changes in both places at
+  once the hub's pages win. Only the pages and the home page travel: each computer keeps its own calendars, shortcuts,
+  cameras and keys, and a computer that is off is caught up when it answers again.
+- Hub mode: the layout editor's **live preview** showed the hub's own machine instead of the computer in play, so Now
+  playing was empty and the volume read `n/a` while the phone's panel worked. The preview now gets the hub's list of
+  computers, as a phone does, and reads and controls media, volume and the rest through the computer it shows.
+- The agent now recognizes the **streaming service** behind what is playing and sends it to the phone (`service`,
+  `serviceName`, `showTitle`). Windows reports a browser as `Chrome` with `Netflix` as the title, which never names
+  the episode; on Windows the agent reads the titles of that browser's own windows and takes the one that names the
+  service in play. Nothing else is read, and no window title is read on Linux or macOS. See PRIVACY.md.
 - Settings survive a power cut. A save now reaches the disk before it replaces `config.json`; a file a power cut left
   empty or damaged is read from the backup of the last save at start, instead of starting over from the defaults
   (which cost the Wi-Fi key, the calendars and a hub's computers), and a damaged file no longer replaces that backup.
