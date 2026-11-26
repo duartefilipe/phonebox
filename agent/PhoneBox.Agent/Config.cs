@@ -82,13 +82,19 @@ public sealed class AgentConfig
     /// <param name="wallpaperRev">The uploaded wallpaper's revision (null without one): the panel loads the picture
     /// with it in the URL, so a new upload is fetched and an unchanged one comes from the cache. Sent as text: a 64-bit
     /// value loses its last digits as a JavaScript number, and two pictures could then share a cached URL.</param>
-    public object ToPublic(string? deviceId = null, Func<Shortcut, (long? Rev, bool Upload)>? shortcutIcon = null, long? wallpaperRev = null) => new
+    /// <param name="hub">This agent is a hub (<see cref="HubMode"/>): no phone's cable ends at it, see below.</param>
+    public object ToPublic(string? deviceId = null, Func<Shortcut, (long? Rev, bool Upload)>? shortcutIcon = null, long? wallpaperRev = null,
+        bool hub = false) => new
     {
         weather = Weather,
         codexBar = CodexBar,
         night = Night,
-        // the phone's own "the cable wins" choice (Settings › Phones) replaces the general one for that device
-        display = UsbWinsFor(deviceId) is { } usbWins ? Display.With(usbWins) : Display,
+        // the phone's own "the cable wins" choice (Settings › Phones) replaces the general one for that device.
+        // A hub's general one is not sent: the app keeps the last answer it got, and the hub's "cable wins" (on by
+        // default) handed a phone plugged into a computer straight back to that computer, which then answered "off"
+        // over the cable, so the phone went back and forth between the two about once a minute. Only a phone that
+        // was told so in the hub's Phones list lets its cable win.
+        display = UsbWinsFor(deviceId) is { } usbWins ? Display.With(usbWins) : hub ? Display.With(false) : Display,
         // this device's own home page (Settings › Phones), when it has one among the pages it shows
         homePage = HomePageFor(deviceId),
         wallpaperRev = wallpaperRev?.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -748,16 +754,35 @@ public sealed partial class ConfigStore(string path)
                 _seen = stamp;
                 if (stamp != _stamp)
                 {
-                    _config = Normalize(JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(path), ReadOpts) ?? new());
+                    _config = Normalize(JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(path), ReadOpts) ?? throw new JsonException("empty file"));
                     _stamp = stamp;
                 }
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"could not read config ({path}): {ex.Message}");
+                // Nothing read yet (the agent is starting) and the file is damaged, e.g. left empty by a power cut: the
+                // copy kept by the last save is used instead of the defaults, which would cost the Wi-Fi key, the
+                // calendars and the hub's computers — and the next save would write those defaults over both files.
+                if (_stamp == DateTime.MinValue && LoadBackup() is { } backup)
+                {
+                    _config = backup;
+                    Console.Error.WriteLine($"using the backup of the settings ({path}.bak)");
+                }
             }
             return _config;
         }
+    }
+
+    /// <summary>The settings kept by the last save (config.json.bak), or null when there is none or it is unreadable too.</summary>
+    private AgentConfig? LoadBackup()
+    {
+        try
+        {
+            var bak = path + ".bak";
+            return File.Exists(bak) && JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(bak), ReadOpts) is { } c ? Normalize(c) : null;
+        }
+        catch (Exception) { return null; }
     }
 
     /// <summary>Save refused: the file changed after the caller loaded it (<see cref="Save"/> with an expected version).</summary>
@@ -838,7 +863,8 @@ public sealed partial class ConfigStore(string path)
             var tmp = path + ".tmp";
             // owner-only on macOS/Linux: the file holds the Wi-Fi, webhook and Home Assistant keys
             AppPaths.WriteAllTextPrivate(tmp, JsonSerializer.Serialize(cfg, WriteOpts));
-            if (File.Exists(path)) AppPaths.CopyPrivate(path, path + ".bak");
+            // only a file that was read as it is on disk becomes the backup: a damaged one must not replace a good copy
+            if (File.Exists(path) && before == _stamp) AppPaths.CopyPrivate(path, path + ".bak");
             File.Move(tmp, path, overwrite: true);
             Advance(before);
             _config = cfg;

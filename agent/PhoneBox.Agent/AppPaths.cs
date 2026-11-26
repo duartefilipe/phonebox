@@ -91,6 +91,22 @@ public static class AppPaths
         using var src = File.OpenRead(source);
         using var dst = CreatePrivate(destination);
         src.CopyTo(dst);
+        dst.Flush(flushToDisk: true);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="bytes"/> to an owner-only file in a way a power cut cannot leave half-written: into a
+    /// temporary file, flushed to the disk, then renamed over <paramref name="path"/>.
+    /// </summary>
+    public static void WriteAllBytesPrivateDurable(string path, byte[] bytes)
+    {
+        var tmp = path + ".tmp";
+        using (var dst = CreatePrivate(tmp))
+        {
+            dst.Write(bytes);
+            dst.Flush(flushToDisk: true);
+        }
+        File.Move(tmp, path, overwrite: true);
     }
 
     /// <summary><see cref="File.WriteAllText(string, string?)"/> into a file only its owner can read (see <see cref="CreatePrivate"/>).</summary>
@@ -99,6 +115,10 @@ public static class AppPaths
         using var stream = CreatePrivate(path);
         using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
         writer.Write(text);
+        writer.Flush();
+        // to the disk itself, not only the system's cache: these files are renamed over the real ones right after, and
+        // a power cut before the cache is written would leave an empty file in their place (settings back to defaults)
+        stream.Flush(flushToDisk: true);
     }
 
     /// <summary>Sets an existing file to 0600 on macOS/Linux; no-op on Windows or when the file is missing.</summary>

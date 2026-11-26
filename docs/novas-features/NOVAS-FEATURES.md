@@ -68,17 +68,31 @@ O passo a passo também está **dentro do painel**, em **Geral › Agendas › "
 Nota: uma agenda sem eventos nos próximos 14 dias aparece vazia no painel sem que haja erro — o agente só busca essa
 janela (`CalendarMonitor.DaysAhead`). Foi o caso da agenda "Pessoal" aqui, cujo próximo evento é em 29/12.
 
-Cuidado ao recompilar o agente do Windows: **não** matar o processo com `Stop-Process`. Ele guarda configurações em
-memória que só vão para o disco ao sair pelo caminho normal, e matá-lo fez voltar um `config.json` antigo — perdendo
-as agendas e o Wi-Fi, e invalidando o pareamento com o hub (o certificado é gerado de novo ao religar o Wi-Fi). Use
-**Sair** no ícone da bandeja, ou `POST http://127.0.0.1:8765/api/restart`.
+Ao recompilar o agente do Windows, prefira **Sair** no ícone da bandeja ou `POST http://127.0.0.1:8765/api/restart`
+a `Stop-Process`. As configurações já iam para o disco a cada salvamento, mas sem garantir a gravação física: uma queda
+de energia (ou um encerramento forçado logo depois de salvar) podia deixar o `config.json` vazio, e o agente subia com
+os padrões — perdendo agendas, Wi-Fi e o pareamento com o hub. Desde 26/11/2026 o salvamento vai até o disco, o agente
+lê o `config.json.bak` quando o arquivo principal está danificado, e o certificado do Wi-Fi é gravado do mesmo jeito.
 
-### Pendente: o celular se repareia sozinho com o PC do cabo
+### Resolvido: o celular se repareava sozinho com o PC do cabo
 
-Com "assumir o celular pelo cabo" desligado e o túnel USB fora do ar, o PC do cabo **ainda volta** à lista de
-computadores do celular em menos de um minuto, por Wi-Fi. O caminho exato não foi rastreado. Enquanto isso, um
-aparelho que deve ficar só no hub precisa do cabo apenas de energia, ou do PC esquecido no painel depois de desligar
-a opção.
+Causa: o app guarda o último "o cabo vence" que recebeu, e o hub mandava "sim" (o padrão). Com o cabo de dados ligado,
+o PC tomava o celular a cada minuto, respondia "não" pelo cabo, o celular voltava ao hub, que mandava "sim" de novo.
+Agora o hub manda "não", a menos que o celular esteja marcado com "Sim" em **Geral › Celulares** do hub.
+
+### Resolvido: a página "PC desligado" saía sozinha
+
+Causa: a decisão "o PC está desligado" era refeita a cada segundo, e uma checagem posterior que dizia menos (o Wi-Fi
+do celular caindo por um instante, um PC em espera moderna respondendo na rede, uma requisição ao hub que falhou)
+tirava a página e deixava as páginas vazias do PC. Agora a decisão vale até um agente responder de novo, e fica guardada
+no celular para sobreviver a um reinício do app (`main.js`, `offDecided` / `pcOffDecided`).
+
+### Resolvido: o app fechava sozinho depois de horas
+
+O Android encerra o processo da página do WebView para liberar memória; sem `onRenderProcessGone`, o app inteiro caía
+junto, a tela perdia o "manter ligada" e apagava. Agora o painel é reiniciado (`MainActivity.kt`, `restartPanel`).
+**Exige reinstalar o APK.** Para o painel voltar também depois de um reinício do celular, ligue **Geral › Tela › Usar
+como tela inicial**.
 
 ### 2. Subir o hub no Portainer
 

@@ -139,3 +139,40 @@ test('an announced shutdown is forgotten once the agent answers again', async ({
   await page.clock.runFor(60_000);
   await expect(body(page)).not.toHaveClass(NIGHT);
 });
+
+test('once the computer is found off, a later check that says less does not take the PC-off screen away', async ({ page }) => {
+  await open(page, { probe: { host: 'unknown', lan: true, usb: null } });
+  await lose(page);
+  await page.clock.runFor(5 * 60_000 + 2_000);
+  await expect(body(page)).toHaveClass(NIGHT);
+  // the phone's Wi-Fi drops for a moment (or a computer in modern standby answers on its network)
+  await page.evaluate(() => { window.__probeAnswer = { host: 'up', lan: false, usb: null }; });
+  await page.clock.runFor(60_000);
+  await expect(body(page)).toHaveClass(NIGHT);
+});
+
+test('the PC-off decision is kept when the app starts again while the computer is still off', async ({ page }) => {
+  await open(page);
+  await lose(page, { event: 'bye', data: { reason: 'shutdown' } });
+  await page.clock.runFor(1_100);
+  await expect(body(page)).toHaveClass(NIGHT);
+  expect(await page.evaluate(() => localStorage.getItem('pcOffDecided'))).toBe('true');
+  // the app starts again (a reboot, Android ending the page's process); the computer is still off
+  await page.route('**/api/**', (route) => route.abort());
+  await page.reload();
+  await page.evaluate(async () => {
+    const m = await import('/panel/main.js');
+    m.cfg.display.nightWhenUnreachable = true;
+    m.setOnline(false);
+  });
+  await page.clock.runFor(1_100);
+  await expect(body(page)).toHaveClass(NIGHT);
+});
+
+test('an agent answering again clears the kept decision', async ({ page }) => {
+  await open(page);
+  await lose(page, { event: 'bye', data: { reason: 'shutdown' } });
+  await page.clock.runFor(1_100);
+  await page.evaluate(async () => (await import('/panel/main.js')).setOnline(true));
+  expect(await page.evaluate(() => localStorage.getItem('pcOffDecided'))).toBe('false');
+});

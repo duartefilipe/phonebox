@@ -2488,6 +2488,17 @@ function notePower(reason) {
   if (reason === 'shutdown' || reason === 'sleep' || reason === 'stop') pcHint = { reason, at: Date.now() };
   else if (reason === null && pcHint && pcHint.reason !== 'stop') pcHint = null; // a sleep the computer woke from
 }
+// Once the panel has found the computer off, that holds until an agent answers again: a later check that says less
+// (the phone's Wi-Fi dropped for a moment, a computer in modern standby still answering on its network, one failed
+// request to the hub) must not take the PC-off page away and leave the empty pages of a computer that is off. It is
+// kept on the phone too, so the page comes back at once when the app is started again while the computer is still off
+// (after a reboot, or Android ending the panel's page process).
+let offDecided = store.get('pcOffDecided', false) === true;
+function decideOff(on) {
+  if (on === offDecided) return;
+  offDecided = on;
+  store.set('pcOffDecided', on);
+}
 function pcOff(delayMin) {
   if (online !== false || !unreachableSince) return false;
   const gone = Date.now() - unreachableSince;
@@ -2512,10 +2523,15 @@ function reconcileUnreachableNight(now = new Date()) {
     bridge.probePc();
   }
   const delayMin = Math.max(1, Math.min(30, +cfg.display?.unreachableNightDelayMin || 5));
-  const unreachable = enabled && pcOff(delayMin);
-  // hub mode: the hub answers, but none of its computers does
-  const allOff = !PREVIEW && !!awayPage && online !== false && Array.isArray(D.state?.sources)
+  const unreachable = enabled && online === false && (offDecided || pcOff(delayMin));
+  // hub mode: none of the hub's computers answers. While the hub itself is out of reach (a failed request, its Wi-Fi
+  // dropping, the container restarting) its last word stands: computers that were all off are still off.
+  const allOff = !PREVIEW && !!awayPage && Array.isArray(D.state?.sources)
     && D.state.sources.length > 0 && D.state.sources.every((s) => !s.online);
+  if (!PREVIEW) {
+    if (unreachable || allOff) decideOff(true);
+    else if (online === true) decideOff(false); // an agent answers, and with a computer on
+  }
   const away = (unreachable || allOff) && !!awayPage;
   setAway(away);
   const dark = darkRoom && cfg.display?.nightWhenDark === true;

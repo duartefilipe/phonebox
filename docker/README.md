@@ -58,6 +58,15 @@ No hub, em **Geral › Wi-Fi e Tailscale › Parear um celular por Wi-Fi**, esca
   - Uma página marcada para "**PC X desligado**" substitui as páginas do PC X enquanto ele estiver desligado.
   - Widgets de um PC desligado, sem página própria, aparecem esmaecidos com o aviso.
 
+## Celular com cabo ligado num PC
+
+Com o hub, o cabo pode servir só de energia. O hub diz aos celulares que o cabo **não** vence (a opção geral "o cabo
+vence" do hub é ignorada); para um celular específico usar o PC do cabo, marque **Sim** para ele em **Geral ›
+Celulares**, com a opção geral desligada. No PC, desligue **Geral › Tela › Assumir o celular pelo cabo**.
+
+Prefira um carregador de tomada: a maioria dos PCs corta a energia da USB ao desligar ou dormir, e é justamente
+quando a página "PC desligado" fica acesa a noite toda. Sem energia, a bateria acaba e o celular desliga.
+
 ## O que passa pelo hub
 
 Métricas, mídia, volume, processos, OBS, Discord, apps e sessões de IA de cada PC chegam pelo hub. Casa (Home Assistant),

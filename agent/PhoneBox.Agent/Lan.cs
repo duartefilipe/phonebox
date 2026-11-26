@@ -31,7 +31,11 @@ public static class Lan
         req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false)); // server auth
         using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(20));
         Directory.CreateDirectory(dir);
-        using (var dst = AppPaths.CreatePrivate(certPath)) dst.Write(cert.Export(X509ContentType.Pfx));
+        // a new certificate means a new fingerprint, which every paired phone and hub has to be paired again for: if the
+        // old file exists but cannot be read, it is kept aside rather than lost, and the new one is written durably
+        if (File.Exists(certPath))
+            try { File.Copy(certPath, certPath + ".unreadable", overwrite: true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        AppPaths.WriteAllBytesPrivateDurable(certPath, cert.Export(X509ContentType.Pfx));
         // Re-import so Windows TLS (SChannel) gets a persisted key.
         return X509CertificateLoader.LoadPkcs12FromFile(certPath, null, X509KeyStorageFlags.UserKeySet | X509KeyStorageFlags.Exportable);
     }

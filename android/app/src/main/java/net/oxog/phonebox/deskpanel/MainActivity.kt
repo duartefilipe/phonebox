@@ -36,12 +36,14 @@ import android.widget.TextView
 import android.widget.Toast
 import android.webkit.JavascriptInterface
 import android.webkit.ConsoleMessage
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebChromeClient
 import android.webkit.WebViewClient
+import androidx.annotation.RequiresApi
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -71,7 +73,14 @@ class MainActivity : Activity(), SensorEventListener {
     }
     // Set first in onDestroy: dictation and stream callbacks already queued on the UI thread then skip the destroyed WebView.
     private var destroyed = false
-    private val dictation by lazy { Dictation(this) { script -> if (!destroyed) web.evaluateJavascript(script, null) } }
+    // Android ended the WebView's page process (out of memory, or it crashed): this WebView can do nothing more and
+    // is not called again; the activity is recreated with a new one (see onRenderProcessGone).
+    @Volatile private var webGone = false
+    /** Runs [script] in the panel, unless there is no panel to run it in (no WebView, destroyed, or its page process gone). */
+    private fun js(script: String) {
+        if (hasWeb && !destroyed && !webGone) web.evaluateJavascript(script, null)
+    }
+    private val dictation by lazy { Dictation(this) { script -> js(script) } }
     private lateinit var link: AgentLink
     private lateinit var stream: AgentStream
     @Volatile private var resumed = false
@@ -95,8 +104,8 @@ class MainActivity : Activity(), SensorEventListener {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         link = AgentLink(this)
         stream = AgentStream(link) { event, data ->
-            val js = "window.onAgentStream && window.onAgentStream(${JSONObject.quote(event)}, ${JSONObject.quote(data)})"
-            runOnUiThread { if (!destroyed) web.evaluateJavascript(js, null) }
+            val script = "window.onAgentStream && window.onAgentStream(${JSONObject.quote(event)}, ${JSONObject.quote(data)})"
+            runOnUiThread { js(script) }
         }
 
         web = try { WebView(this) } catch (e: Exception) {
@@ -147,6 +156,17 @@ class MainActivity : Activity(), SensorEventListener {
             // never runs in iframes), and only when it shows the panel. Bridge calls before it arrives get nothing.
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) = giveKey(view, url)
             override fun onPageFinished(view: WebView, url: String?) = giveKey(view, url)
+
+            // Without this, Android ends the whole app with the page's process: on an old phone left on all day the
+            // system reclaims that process for memory sooner or later, the panel closes, and with it the screen's
+            // keep-on flag, so the phone goes dark at its normal timeout. The panel is started again instead.
+            @RequiresApi(Build.VERSION_CODES.O)
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                Log.e("PhoneBox", "the panel's page process ended (crashed: ${detail.didCrash()}); starting the panel again")
+                webGone = true
+                restartPanel()
+                return true
+            }
         }
         if (documentStartKey)
             WebViewCompat.addDocumentStartJavaScript(web, panelBootstrap(), setOf("https://$ASSET_HOST"))
@@ -157,6 +177,17 @@ class MainActivity : Activity(), SensorEventListener {
         web.loadUrl("https://$ASSET_HOST/assets/www/index.html")
         hideSystemUi()
         handlePairingLink(intent)
+    }
+
+    /**
+     * A new activity, with a new WebView, in place of the one whose page process is gone. Right after another loss the
+     * restart waits a little, so a page that keeps crashing does not keep the phone busy restarting it.
+     */
+    private fun restartPanel() {
+        val now = SystemClock.elapsedRealtime()
+        val delay = if (lastPanelRestart != 0L && now - lastPanelRestart < 60_000) 10_000L else 0L
+        lastPanelRestart = now
+        window.decorView.postDelayed({ if (!isFinishing && !isDestroyed) recreate() }, delay)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -194,7 +225,7 @@ class MainActivity : Activity(), SensorEventListener {
                 if (isFinishing || isDestroyed) return@runOnUiThread // the pairing is stored; there is no window to show it in
                 if (problem == null) {
                     Toast.makeText(context, context.getString(R.string.pair_done, pairing.pc), Toast.LENGTH_LONG).show()
-                    stream.stop(); if (resumed) stream.start(); if (hasWeb) web.reload()
+                    stream.stop(); if (resumed) stream.start(); if (hasWeb && !webGone) web.reload()
                 } else {
                     AlertDialog.Builder(this).setTitle(context.getString(R.string.pair_failed_title)).setMessage(problem.message(context))
                         .setPositiveButton(context.getString(R.string.ok), null).setOnDismissListener { hideSystemUi() }.show().pairingButtons(context)
@@ -310,7 +341,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         if (key == null || !volumeKeysFlipPages || !hasWeb) return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
-            web.evaluateJavascript("window.onAndroidKey && window.onAndroidKey('$key')", null)
+            js("window.onAndroidKey && window.onAndroidKey('$key')")
         return true
     }
 
@@ -318,15 +349,15 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onBackPressed() {
         // Kiosk behaviour: Back does not leave the app, it returns to the first page.
         if (!hasWeb) return super.onBackPressed() // nothing to return to without the panel
-        web.evaluateJavascript("window.onAndroidBack && window.onAndroidBack()", null)
+        js("window.onAndroidBack && window.onAndroidBack()")
     }
 
     override fun onResume() {
         super.onResume()
         if (!hasWeb) return
         resumed = true
-        web.onResume()
-        web.evaluateJavascript("window.onAppPause && window.onAppPause(false)", null) // the panel catches up at once
+        if (!webGone) web.onResume()
+        js("window.onAppPause && window.onAppPause(false)") // the panel catches up at once
         stream.start()
         hideSystemUi()
         sensors?.getDefaultSensor(Sensor.TYPE_LIGHT)?.let { sensors?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
@@ -346,8 +377,8 @@ class MainActivity : Activity(), SensorEventListener {
         stream.stop()
         // WebView.onPause() leaves JavaScript running: tell the panel to stop polling and refreshing while nobody sees it
         if (hasWeb) {
-            web.evaluateJavascript("window.onAppPause && window.onAppPause(true)", null)
-            web.onPause()
+            js("window.onAppPause && window.onAppPause(true)")
+            if (!webGone) web.onPause()
         }
         super.onPause()
     }
@@ -381,13 +412,13 @@ class MainActivity : Activity(), SensorEventListener {
                 if (!jump && now - lastLuxAt < 10_000) return
                 if (now - lastLuxAt < 700) return
                 lastLux = lux; lastLuxAt = now
-                web.evaluateJavascript("window.onAndroidSensor && window.onAndroidSensor('light', $lux)", null)
+                js("window.onAndroidSensor && window.onAndroidSensor('light', $lux)")
             }
             Sensor.TYPE_PROXIMITY -> {
                 val isNear = e.values[0] < minOf(5f, e.sensor.maximumRange)
                 if (isNear == near) return
                 near = isNear
-                web.evaluateJavascript("window.onAndroidSensor && window.onAndroidSensor('proximity', $isNear)", null)
+                js("window.onAndroidSensor && window.onAndroidSensor('proximity', $isNear)")
             }
         }
     }
@@ -569,7 +600,7 @@ class MainActivity : Activity(), SensorEventListener {
             if (!ok(key) || !link.select(id)) return
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                stream.stop(); if (resumed) stream.start(); if (hasWeb) web.reload()
+                stream.stop(); if (resumed) stream.start(); if (hasWeb && !webGone) web.reload()
             }
         }
 
@@ -603,8 +634,8 @@ class MainActivity : Activity(), SensorEventListener {
                             registerReceiver(null, IntentFilter("android.hardware.usb.action.USB_STATE"))?.getBooleanExtra("connected", false)
                         } catch (_: Exception) { null }
                         result.put("usb", usb ?: JSONObject.NULL)
-                        val js = "window.onPcProbe && window.onPcProbe(${JSONObject.quote(result.toString())})"
-                        runOnUiThread { if (!destroyed) web.evaluateJavascript(js, null) }
+                        val script = "window.onPcProbe && window.onPcProbe(${JSONObject.quote(result.toString())})"
+                        runOnUiThread { js(script) }
                     } catch (e: Exception) {
                         Log.w("PhoneBox", "computer check failed", e)
                     } finally { probing.set(false) }
@@ -659,6 +690,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     companion object {
+        /** When the panel was last started again after losing its page process (elapsedRealtime); for the whole app process. */
+        private var lastPanelRestart = 0L
         private const val ASSET_HOST = "appassets.androidplatform.net"
         private val NO_STORE = mapOf("Cache-Control" to "no-store")
         private const val PANEL_HEADER = "X-PhoneBox-Panel"

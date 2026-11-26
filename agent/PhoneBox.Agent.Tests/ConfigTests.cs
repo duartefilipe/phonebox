@@ -192,6 +192,19 @@ public class ConfigTests
         Assert.True(c.Display.UsbWins); // the stored settings are untouched
     }
 
+    // A hub is never at the other end of a phone's cable: its general "cable wins" would only hand a plugged-in phone
+    // back to the computer it is plugged into. A phone told so in the hub's own Phones list still gets its answer.
+    [Fact]
+    public void AHubTellsItsPhonesTheCableDoesNotWinUnlessThatPhoneSaysSo()
+    {
+        var c = Load("""{ "display": { "usbWins": true }, "phones": [ { "id": "desk", "name": "Desk" } ] }""");
+        Assert.Contains("\"usbWins\": false", JsonSerializer.Serialize(c.ToPublic("desk", hub: true), ConfigStore.WriteOpts));
+        Assert.Contains("\"usbWins\": true", JsonSerializer.Serialize(c.ToPublic("desk"), ConfigStore.WriteOpts)); // not a hub
+        // an answer of its own survives only when it differs from the general one (see the test below)
+        var plugged = Load("""{ "display": { "usbWins": false }, "phones": [ { "id": "plugged", "name": "Plugged", "usbWins": true } ] }""");
+        Assert.Contains("\"usbWins\": true", JsonSerializer.Serialize(plugged.ToPublic("plugged", hub: true), ConfigStore.WriteOpts));
+    }
+
     // An answer equal to the general setting is no override: it would otherwise stay behind and silently stop
     // following a later change of the general one.
     // Taking the phone over on USB is what it always did, so it stays on; turning it off is what lets a hub keep the
@@ -346,6 +359,43 @@ public class ConfigTests
         Assert.Equal(["izmir", "is-akisi"], c.Pages.Select(p => p.Id));
         Assert.Equal("indir", c.Shortcuts.Single().Id);
         Assert.Equal("ikindi", c.Rules.Single().Id);
+    }
+
+    [Fact]
+    public void ADamagedConfigAtStartIsReadFromTheLastSavesBackup()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"phonebox-config-{Guid.NewGuid():N}.json");
+        try
+        {
+            var first = new ConfigStore(path);
+            Assert.Null(first.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "cmd.exe" } ] }"""));
+            Assert.Null(first.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "wt.exe" } ] }"""));
+            // a power cut right after a save: the file is there, but empty
+            File.WriteAllText(path, "");
+
+            var restarted = new ConfigStore(path);
+            Assert.Equal("cmd.exe", restarted.Get().Shortcuts.Single().Cmd);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
+    public void ASaveOverADamagedConfigKeepsTheGoodBackup()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"phonebox-config-{Guid.NewGuid():N}.json");
+        try
+        {
+            var first = new ConfigStore(path);
+            Assert.Null(first.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "cmd.exe" } ] }"""));
+            Assert.Null(first.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "wt.exe" } ] }"""));
+            File.WriteAllText(path, "{ not json");
+
+            var restarted = new ConfigStore(path);
+            Assert.Null(restarted.Save("""{ "shortcuts": [ { "label": "Shell", "cmd": "pwsh.exe" } ] }"""));
+            Assert.Contains("cmd.exe", File.ReadAllText(path + ".bak"));
+            Assert.Equal("pwsh.exe", new ConfigStore(path).Get().Shortcuts.Single().Cmd);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
     }
 
     [Fact]

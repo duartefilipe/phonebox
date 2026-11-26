@@ -85,6 +85,19 @@ test('with every computer off, the PC-off page covers the panel', async ({ page 
   await expect(page.locator('body')).not.toHaveClass(/(^|\s)away($|\s)/);
 });
 
+test('the hub going out of reach for a moment keeps the PC-off page of computers that were all off', async ({ page }) => {
+  await open(page);
+  await state(page, [{ id: A, name: 'Desk', online: false, state: null }, { id: B, name: 'Office', online: false, state: null }]);
+  await expect(page.locator('body')).toHaveClass(/(^|\s)away($|\s)/);
+  // one failed request, the phone's Wi-Fi dropping, the hub's container restarting
+  await page.evaluate(async () => {
+    window.fetch = () => Promise.reject(new TypeError('the hub is not answering'));
+    (await import('/panel/main.js')).setOnline(false);
+  });
+  await page.waitForTimeout(2500);
+  await expect(page.locator('body')).toHaveClass(/(^|\s)away($|\s)/);
+});
+
 test('without a hub nothing changes: no relay, no computer state', async ({ page }) => {
   await page.goto('/panel/');
   await expect(page.locator('#dots i')).not.toHaveCount(0);

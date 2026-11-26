@@ -44,6 +44,13 @@
   Apple Music now shows as "Apple Music" instead of "AppleInc" (#557).
 
 **Agent**
+- Settings survive a power cut. A save now reaches the disk before it replaces `config.json`; a file a power cut left
+  empty or damaged is read from the backup of the last save at start, instead of starting over from the defaults
+  (which cost the Wi-Fi key, the calendars and a hub's computers), and a damaged file no longer replaces that backup.
+  The Wi-Fi certificate is written the same way, so its fingerprint, and with it every pairing, stays.
+- Hub: a phone plugged into a computer no longer goes back and forth between the hub and that computer. The app keeps
+  the last "the cable wins" it was told, and the hub said yes by default, so the computer took the phone over the
+  cable within a minute of every switch. A hub now says no unless the phone is set to yes in its Phones list.
 - Linux on GNOME Wayland (Ubuntu's default session): shortcuts that type text or press keys work with `ydotool`
   installed; GNOME takes neither `wtype` nor `xdotool`. A key press or typing that fails now says so instead of
   reporting success, and `xdotool` is used on Wayland only when neither of the others is installed, since there it
@@ -92,6 +99,10 @@
   the adb server, phones that already had their rule get it back without being woken (#486).
 
 **Panel**
+- The page shown while the PC is off stays up until an agent answers again. A later check that said less (the phone's
+  Wi-Fi dropping for a moment, a computer in modern standby answering on its network) or one failed request to the hub
+  took it away, which left the empty pages of a computer that was off. The decision is also kept on the phone, so
+  after the app starts again with the computer still off the page comes back at once.
 - Page bar: with many pages on a narrow phone, only the current page keeps its name, so the others are not cut to one
   letter. It happens only when a name would be cut, so tablets, monitors and the side bar keep every name (#553).
 - Settings › Display › **More rows on a tablet**, off by default: a landscape tablet keeps the 12 columns and adds
@@ -119,6 +130,9 @@
   a wallpaper is set (#468, #471).
 
 **Android app**
+- The panel starts again when Android ends its page process, which it does sooner or later on an old phone left on all
+  day. The whole app used to close with it, and with it the screen's keep-on flag: the phone went dark at its normal
+  screen timeout.
 - Pairing without a cable: when the browser can't hand the pairing link to the app, the pairing page now says what to
   do (install the app first, or try the camera, Chrome or USB) instead of opening the download page as if pairing had
   worked (#175, #552).
