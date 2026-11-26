@@ -30,6 +30,8 @@ public sealed class PlayerCapture : IDisposable
     internal const long KeepMs = 4000;
     /// <summary>A frame older than this is not shown as live.</summary>
     internal const long FreshMs = 3000;
+    /// <summary>How long a request waits for the next frame (<see cref="MediaService.FrameWaitMs"/>, so it is testable).</summary>
+    internal const int WaitMs = MediaService.FrameWaitMs;
     /// <summary>JPEG quality: a video frame carries noise, so a lower one saves much and costs little.</summary>
     private const long Quality = 55;
 
@@ -46,6 +48,8 @@ public sealed class PlayerCapture : IDisposable
     private long _frameAt, _frameSeq;
     private string _state = "starting";
     private readonly Dictionary<string, long> _served = new(StringComparer.Ordinal);
+    /// <summary>Poked on every grab, so the requests waiting for a frame wake the moment one exists.</summary>
+    private readonly FrameSignal _signal = new();
 
     public PlayerCapture(ILogger<PlayerCapture> log) : this(log, null) { }
 
@@ -57,6 +61,22 @@ public sealed class PlayerCapture : IDisposable
 
     /// <summary>States the panel knows: it falls back to the cover art for anything but "live".</summary>
     internal const string Idle = "idle", NoWindow = "no-window", Off = "off", Starting = "starting";
+
+    /// <summary>
+    /// The next picture for the widget the phone names: the newest one it has not been sent, waiting up to
+    /// <see cref="WaitMs"/> for one to be grabbed. Answering as the frames are made is what keeps them evenly spaced;
+    /// a panel that picks its own moment to ask beats against the capture's clock and the picture judders.
+    /// </summary>
+    public async Task<(int Status, byte[]? Jpeg, string State)> FrameAsync(AgentConfig cfg, Func<MediaSnapshot?> media,
+        string? deviceId, string? widgetKey, bool fresh, CancellationToken ct)
+    {
+        var answer = Frame(cfg, media(), deviceId, widgetKey, fresh);
+        if (answer.Status != 204) return answer;
+        // nothing new for this widget yet: hold the request until the next grab instead of sending it away empty
+        try { if (!await _signal.WaitAsync(WaitMs, ct)) return answer; }
+        catch (OperationCanceledException) { return answer; }
+        return Frame(cfg, media(), deviceId, widgetKey, fresh);
+    }
 
     /// <summary>
     /// The newest picture of the player, for the widget the phone names ("pageId/widgetId"). 200 with a JPEG, 204 when
@@ -151,6 +171,8 @@ public sealed class PlayerCapture : IDisposable
                         _state = "live";
                     }
                 }
+                // the waiting requests take this frame now: their spacing becomes the capture's own, which is even
+                _signal.Poke();
                 var spent = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 var wait = (int)Math.Max(1, 1000.0 / Math.Clamp(fps, MinFps, MaxFps) - spent);
                 Thread.Sleep(wait);
@@ -206,6 +228,7 @@ public sealed class PlayerCapture : IDisposable
     {
         _disposed = true;
         lock (_gate) StopLocked();
+        _signal.Poke(); // no frame is coming: let the waiting requests answer instead of holding on
     }
 }
 

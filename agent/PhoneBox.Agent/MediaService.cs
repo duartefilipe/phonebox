@@ -20,6 +20,12 @@ internal static class MediaService
     /// </summary>
     internal const int MinFps = 1, MaxFps = 15, DefaultFps = 5;
 
+    /// <summary>
+    /// How long a frame request waits for the next grab before it answers "nothing new" (<see cref="FrameSignal"/>).
+    /// Must outlast one interval at <see cref="MinFps"/>, so a waiting panel is woken by a frame rather than by this.
+    /// </summary>
+    internal const int FrameWaitMs = 1500;
+
     /// <summary>The rate a widget asks for, kept to what the capture allows.</summary>
     internal static int RateOf(WidgetConfig? widget) =>
         Math.Clamp(widget?.Int("fps") ?? DefaultFps, MinFps, MaxFps);

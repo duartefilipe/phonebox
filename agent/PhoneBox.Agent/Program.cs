@@ -1187,18 +1187,21 @@ app.MapGet("/api/art", (MediaMonitor media) =>
 // The Now playing screen widget's live video: the picture of the window of the player that is playing, as a JPEG.
 // Only for a widget of that type on an enabled page this phone shows, with its own "Live video" on; the capture starts
 // with these requests and stops a few seconds after the last one. Windows only; elsewhere the widget keeps the cover.
-app.MapGet("/api/nowplaying/frame", (string? widget, string? fresh, HttpRequest req, HttpResponse res,
-    ConfigStore cfg, MediaMonitor media, ControlDeck deck, IServiceProvider sp) =>
+// The request waits (briefly) for the next grab instead of answering "nothing new" at once: the frames then reach the
+// phone as they are made, evenly, rather than on a timer of the panel's own that beats against the agent's (#judder).
+app.MapGet("/api/nowplaying/frame", async (string? widget, string? fresh, HttpRequest req, HttpResponse res,
+    ConfigStore cfg, MediaMonitor media, ControlDeck deck, IServiceProvider sp, CancellationToken ct) =>
 {
     res.Headers.CacheControl = "no-store";
     res.Headers.XContentTypeOptions = "nosniff";
 #if WINDOWS
     var capture = sp.GetRequiredService<PlayerCapture>();
-    var (status, jpeg, state) = capture.Frame(cfg.Get(), deck.EffectiveMedia(media.Snapshot()),
-        req.Headers["X-PhoneBox-Device"].ToString(), widget, fresh is "true" or "1");
-    if (status == 204) return Results.NoContent(); // this widget already has the newest picture
+    var (status, jpeg, state) = await capture.FrameAsync(cfg.Get(), () => deck.EffectiveMedia(media.Snapshot()),
+        req.Headers["X-PhoneBox-Device"].ToString(), widget, fresh is "true" or "1", ct);
+    if (status == 204) return Results.NoContent(); // nothing new arrived while the request waited
     return jpeg is null ? Results.Json(new { state }, statusCode: status) : Results.Bytes(jpeg, "image/jpeg");
 #else
+    await Task.CompletedTask;
     return Results.Json(new { state = "unsupported" }, statusCode: 501);
 #endif
 });

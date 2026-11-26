@@ -152,6 +152,7 @@ W.nowplaying = {
       }
     };
     const decoded = (img) => (img.decode ? img.decode() : new Promise((done, fail) => { img.onload = done; img.onerror = fail; }));
+    // only for the rare retry after a picture failed to decode: the agent paces the frames, the panel does not
     const liveEvery = () => 1000 / liveFps;
 
     const liveOne = async () => {
@@ -165,9 +166,10 @@ W.nowplaying = {
         const r = await Promise.race([
           fetch(`${API}${relayPath(`/nowplaying/frame?${wq}${fresh}`)}`, { cache: 'no-store', headers: PANEL_HEADERS, signal: ctl.signal }),
           deadline]);
-        // nothing newer yet: the agent grabs on its own clock, so asking again only at the full interval would miss
-        // every other frame (it measured 1.2 fps out of 5). A short wait catches the next grab instead.
-        if (r.status === 204) return Math.max(40, liveEvery() / 3);
+        // The agent holds the request until it grabs a frame, so a 204 means its wait ran out (nothing is being
+        // grabbed) rather than "ask again sooner". Asking straight back keeps the next frame arriving as it is made:
+        // guessing the interval here is what made the frames land 33 to 267 ms apart.
+        if (r.status === 204) return 0;
         if (r.ok) {
           const url = URL.createObjectURL(await Promise.race([r.blob(), deadline]));
           const back = 1 - liveFront, next = liveLayers[back];
@@ -182,7 +184,8 @@ W.nowplaying = {
           liveFront = back;
           liveOk = true;
           box.classList.add('has-live');
-          return liveEvery();
+          // straight back for the next one: the agent paces the frames, and waiting here only adds jitter
+          return 0;
         }
         // nothing playing, no window, the option off, or a computer that cannot capture: back to the cover art.
         // The body is read even though it is not used: an unread one leaves the request hanging, which the browser

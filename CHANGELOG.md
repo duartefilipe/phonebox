@@ -3,6 +3,11 @@
 ## Unreleased
 
 **Widgets**
+- Now playing screen: the live video's frames are now **evenly spaced**. The agent used to grab on its own clock
+  while the panel guessed when to ask; the two beat against each other, so enough frames were made but they reached the
+  phone 33 to 267 ms apart, which is seen as judder. A frame request is now held until the next frame is grabbed, so
+  the pictures arrive as they are made. Measured on the panel: the spacing went from 231 ms of jitter to 18 ms
+  (200, 186, 202, 201, 199, 204 ms …), and the empty answers in between are gone.
 - Now playing screen: **live video** (Windows, on by default). Instead of the cover art the widget shows the picture of
   the window the player is playing in — a film, an episode or a video, moving, with the title and the controls over it.
   Five pictures a second by default (about 9% of one core here; 1 to 15 in the widget's options), captured only while a
