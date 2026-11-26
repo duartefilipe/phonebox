@@ -158,7 +158,11 @@ test('the PC-off decision is kept when the app starts again while the computer i
   await expect(body(page)).toHaveClass(NIGHT);
   expect(await page.evaluate(() => localStorage.getItem('pcOffDecided'))).toBe('true');
   // the app starts again (a reboot, Android ending the page's process); the computer is still off
-  await page.route('**/api/**', (route) => route.abort());
+  // kept in place: the demo puts its own fetch in after the page starts
+  await page.addInitScript(() => {
+    const offline = () => Promise.reject(new TypeError('the agent is not running'));
+    Object.defineProperty(window, 'fetch', { get: () => offline, set: () => {}, configurable: false });
+  });
   await page.reload();
   await page.evaluate(async () => {
     const m = await import('/panel/main.js');
